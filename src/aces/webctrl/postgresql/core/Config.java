@@ -12,9 +12,6 @@ public class Config {
   static { revertDefaults(); }
   private static void revertDefaults(){
     ID = -1;
-    //connectionURL = "pgsql-analytics.postgres.database.azure.com:5432/analytics";
-    //username = "webctrl@pgsql-analytics";
-    //password = "@1C5E8S5!";
     connectionURL = "";
     username = "";
     password = "";
