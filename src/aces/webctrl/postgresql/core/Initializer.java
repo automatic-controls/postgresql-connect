@@ -1,0 +1,190 @@
+package aces.webctrl.postgresql.core;
+import java.nio.file.*;
+import javax.servlet.*;
+import java.util.concurrent.*;
+import com.controlj.green.addonsupport.*;
+import com.controlj.green.common.CJProduct;
+public class Initializer implements ServletContextListener {
+  /** Name of the addon used for auto udpates */
+  public final static String AUTO_UPDATE_ADDON = "AutoUpdater";
+  /** The version of this addon */
+  public volatile static String addonVersion;
+  /** Contains basic information about this addon */
+  public volatile static AddOnInfo info = null;
+  /** The name of this addon */
+  private volatile static String name;
+  /** Prefix used for constructing relative URL paths */
+  private volatile static String prefix;
+  /** Path to the private directory for this addon */
+  private volatile static Path root;
+  /** Path to a temporary file used when downloading addons */
+  public volatile static Path tmpAddonFile;
+  /** Path to the directory containing addons */
+  public volatile static Path addonsDir;
+  /** Contains the version of this WebCTRL server */
+  public volatile static String version = null;
+  /** Contains the truncated version of this WebCTRL server */
+  public volatile static String simpleVersion = null;
+  /** Contains the product.name of this WebCTRL server */
+  public volatile static String productName = null;
+  /** Logger for this addon */
+  private volatile static FileLogger logger;
+  /** Status message to display on the main page */
+  public volatile static String status = "Initializing";
+  /** The main processing thread */
+  private volatile static Thread mainThread = null;
+  /** Becomes true when the servlet context is destroyed */
+  public volatile static boolean stop = false;
+  /** Becomes true when the main processing thread terminates */
+  private volatile static boolean stopped = false;
+  /** Used to initiate immediate manual syncs. */
+  private final static Object syncNotifier = new Object();
+  /** Whether to initiate an immediate sync. */
+  private volatile static boolean syncNow = true;
+  /** Specifies how long to wait in between querying for something new to do. */
+  private final static long timeout = 300000L;
+  /** Specifies the next epoch milliseconds value to auto-save data at. */
+  private volatile static long nextSave = 0;
+  /** Stores log messages before sending them to the database. */
+  public final static ConcurrentLinkedQueue<LogMessage> logCache = new ConcurrentLinkedQueue<LogMessage>();
+  /**
+   * Entry point of this add-on.
+   */
+  @Override public void contextInitialized(ServletContextEvent sce){
+    info = AddOnInfo.getAddOnInfo();
+    addonVersion = info.getVersionString();
+    name = info.getName();
+    prefix = '/'+name+'/';
+    root = info.getPrivateDir().toPath();
+    tmpAddonFile = root.resolve("tmp.addon");
+    {
+      final ServerVersion sv = info.getServerVersion();
+      version = sv.getBuildNumber();
+      simpleVersion = sv.getVersionNumber();
+    }
+    productName = CJProduct.getDistName();
+    logger = info.getDateStampLogger();
+    addonsDir = HelperAPI.getAddonsDirectory().toPath();
+    Config.init(root.resolve("config.dat"));
+    try{
+      Class.forName("org.postgresql.Driver");
+    }catch(Throwable t){
+      log(t);
+    }
+    mainThread = new Thread(){
+      public void run(){
+        long time, x;
+        while (!stop){
+          try{
+            while (!stop){
+              time = System.currentTimeMillis();
+              if (time>=nextSave){
+                HelperAPI.removeAddon(AUTO_UPDATE_ADDON, true);
+                Config.save();
+                nextSave = time+86400000L;
+                if (stop){ break; }
+              }
+              if (syncNow || (x=Config.cron.getNext())!=-1 && time>=x){
+                new Sync(Event.GENERAL);
+                Config.cron.reset();
+                syncNow = false;
+                if (stop){ break; }
+              }
+              x = Config.cron.getNext();
+              x = x==-1?timeout:Math.min(timeout,x-System.currentTimeMillis());
+              if (x>0){
+                synchronized (syncNotifier){
+                  if (!syncNow){
+                    syncNotifier.wait(x);
+                  }
+                }
+              }
+            }
+          }catch(InterruptedException e){}
+        }
+        stopped = true;
+      }
+    };
+    status = "Initialized";
+    log("Initialized successfully (v"+addonVersion+").");
+    mainThread.start();
+  }
+  /**
+   * Kills the primary processing thread and releases all resources.
+   */
+  @Override public void contextDestroyed(ServletContextEvent sce){
+    stop = true;
+    if (mainThread==null){
+      Config.save();
+    }else{
+      mainThread.interrupt();
+      synchronized (syncNotifier){
+        syncNotifier.notifyAll();
+      }
+      Config.save();
+      //Wait for the primary processing thread to terminate.
+      while (!stopped){
+        try{
+          mainThread.join();
+        }catch(InterruptedException e){}
+      }
+    }
+    log("Execution terminated.");
+    new Sync(Event.SHUTDOWN);
+  }
+  /**
+   * Tells the processing thread to invoke a synchronization event ASAP.
+   */
+  public static void syncNow(){
+    syncNow = true;
+    synchronized (syncNotifier){
+      syncNotifier.notifyAll();
+    }
+  }
+  /**
+   * @return the name of this application.
+   */
+  public static String getName(){
+    return name;
+  }
+  /**
+   * @return the prefix used for constructing relative URL paths.
+   */
+  public static String getPrefix(){
+    return prefix;
+  }
+  /** Utility variable for checking the log message cache size every so often */
+  private volatile static int logCounter = 0;
+  /**
+   * Ensures the log cache does not grow too large
+   */
+  private static void checkLogCache(){
+    if (++logCounter==128){
+      logCounter = 0;
+      int s;
+      if ((s=logCache.size())>256){
+        for (;s>128;--s){
+          if (logCache.poll()==null){
+            break;
+          }
+        }
+      }
+    }
+  }
+  /**
+   * Logs a message.
+   */
+  public synchronized static void log(String str){
+    logCache.add(new LogMessage(str));
+    logger.println(str);
+    checkLogCache();
+  }
+  /**
+   * Logs an error.
+   */
+  public synchronized static void log(Throwable t){
+    logCache.add(new LogMessage(t));
+    logger.println(t);
+    checkLogCache();
+  }
+}

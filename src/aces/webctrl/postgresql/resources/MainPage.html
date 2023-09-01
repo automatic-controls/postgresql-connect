@@ -1,0 +1,193 @@
+<!--
+  BSD 3-Clause License
+  Copyright (c) 2022, Automatic Controls Equipment Systems, Inc.
+  Contributors: Cameron Vogt (@cvogt729)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      PostgreSQL Connector
+    </title>
+    <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+    <script>
+      function registerChange(){
+        if (!changes){
+          changes = true;
+          mainTitle.innerText = "* PostgreSQL Connector *";
+          document.title = mainTitle.innerText;
+        }
+      }
+      function unregisterChange(){
+        if (changes){
+          changes = false;
+          mainTitle.innerText = "PostgreSQL Connector";
+          document.title = mainTitle.innerText;
+        }
+      }
+      function checkSave(){
+        if (changes){
+          alert("Please save changes before continuing.");
+          return false;
+        }else{
+          return true;
+        }
+      }
+      function resize(input){
+        const styles = window.getComputedStyle(input);
+        hiddenSpan.style.fontFamily = styles.fontFamily;
+        hiddenSpan.style.fontSize = styles.fontSize;
+        hiddenSpan.style.fontStyle = styles.fontStyle;
+        hiddenSpan.style.fontWeight = styles.fontWeight;
+        hiddenSpan.style.letterSpacing = styles.letterSpacing;
+        hiddenSpan.style.textTransform = styles.textTransform;
+        hiddenSpan.style.borderLeftWidth = styles.borderLeftWidth;
+        hiddenSpan.style.borderRightWidth = styles.borderRightWidth;
+        hiddenSpan.style.paddingLeft = styles.paddingLeft;
+        hiddenSpan.style.paddingRight = styles.paddingRight;
+        hiddenSpan.innerText = input.value;
+        input.style.width = hiddenSpan.offsetWidth+"px";
+      }
+      function syncNow(){
+        if (checkSave()){
+          syncButton.disabled = true;
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/index?type=syncNow");
+          req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+          req.timeout = 5000;
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                statusBox.innerText = "Sync Initiated";
+              }else{
+                statusBox.innerText = "HTTP Error "+this.status;
+              }
+              syncButton.disabled = false;
+            }
+          };
+          req.send();
+        }
+      }
+      function save(){
+        saveButton.disabled = true;
+        const req = new XMLHttpRequest();
+        req.open("POST","__PREFIX__/index?type=save");
+        req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+        req.timeout = 5000;
+        req.onreadystatechange = function(){
+          if (this.readyState===4){
+            if (this.status===200){
+              parseRefresh(this.responseText);
+              passwordField.value = "";
+              unregisterChange();
+            }else{
+              statusBox.innerText = "HTTP Error "+this.status;
+            }
+            saveButton.disabled = false;
+          }
+        };
+        req.send(
+          "connectionURL="+encodeURIComponent(connectionURLField.value)+
+          "&username="+encodeURIComponent(usernameField.value)+
+          "&password="+encodeURIComponent(passwordField.value)+
+          "&cron="+encodeURIComponent(cronField.value)
+        );
+      }
+      function refresh(){
+        const req = new XMLHttpRequest();
+        req.open("POST","__PREFIX__/index?type=refresh");
+        req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+        req.timeout = 5000;
+        req.onreadystatechange = function(){
+          if (this.readyState===4){
+            if (this.status===200){
+              parseRefresh(this.responseText);
+            }else{
+              statusBox.innerText = "HTTP Error "+this.status;
+            }
+            setTimeout(refresh,20000);
+          }
+        };
+        req.send();
+      }
+      function parseRefresh(s){
+        try{
+          const i = s.indexOf(';');
+          const j = s.indexOf(';',i+1);
+          statusBox.innerText = s.substring(0,i);
+          idBox.innerText = s.substring(i+1,j);
+          cronBox.innerText = s.substring(j+1);
+        }catch(e){
+          console.error(e);
+          statusBox.innerText = "Invalid Response";
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div style="text-align:center">
+      <h1 id="mainTitle">PostgreSQL Connector</h1>
+      <div class="divGrouping">
+        <label for="statusBox">Status:</label>
+        <span id="statusBox" style="color:red">Retrieving...</span>
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="idBox">Server ID:</label>
+        <span id="idBox"></span>
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="connectionURLField">Connection URL:</label>
+        <input class="c" type="text" id="connectionURLField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="usernameField">Username:</label>
+        <input class="c" type="text" id="usernameField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="passwordField">Password:</label>
+        <input class="c" type="text" id="passwordField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="cronField"><a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/support/CronExpression.html#parse(java.lang.String)" target="_blank" style="border:none">Cron Expression:</a></label>
+        <input class="c" type="text" id="cronField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="cronBox">Next Sync Time:</label>
+        <span id="cronBox"></span>
+      </div>
+      <br><br>
+      <button class="e" id="saveButton" onclick="save()">Save Changes</button>
+      <button type="button" class="e" onclick="prompt=false;window.location.reload()">Discard Changes</button>
+      <button class="e" id="syncButton" onclick="syncNow()">Sync Now</button>
+      <a class="e" href="__PREFIX__/index?type=downloadSQL" download="Setup.sql" target="_blank">Download Setup SQL</a>
+      <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+    </div>
+    <script>
+      var changes;
+      var prompt = true;
+      statusBox.innerText = "__STATUS__";
+      idBox.innerText = "__ID__";
+      connectionURLField.value = "__CONNECTION_URL__";
+      usernameField.value = "__USERNAME__";
+      cronField.value = "__CRON__";
+      cronBox.innerText = "__CRON_DISPLAY__";
+      resize(connectionURLField);
+      resize(usernameField);
+      resize(passwordField);
+      resize(cronField);
+      unregisterChange();
+      window.onbeforeunload = ()=>{
+        if (prompt && changes){
+          return "Changes remain unsaved. Are you sure you want to leave?";
+        }
+      };
+      setTimeout(refresh,5000);
+    </script>
+  </body>
+</html>

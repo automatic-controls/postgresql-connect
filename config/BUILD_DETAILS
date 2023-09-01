@@ -1,0 +1,30 @@
+JDK Version:
+openjdk 19.0.1 2022-10-18
+OpenJDK Runtime Environment (build 19.0.1+10-21)
+OpenJDK 64-Bit Server VM (build 19.0.1+10-21, mixed mode, sharing)
+
+Compilation Flags:
+--release 8
+
+Runtime Dependencies:
+addonsupport-api-addon-1.9.0
+alarmmanager-api-addon-1.9.0
+bacnet-api-core-1.10.002-20230209.1438r
+directaccess-api-addon-1.9.0
+tomcat-embed-core-9.0.68
+webaccess-api-addon-1.9.0
+xdatabase-api-addon-1.9.0
+common-8.5.002
+commonbaseutils-2.0.3
+commonexceptions-8.5.002
+core-8.5.002
+datatable-8.5.002
+extensionsupport-api-8.5.002
+jsch-0.2.11-sources
+postgresql-42.6.0-sources
+spring-context-5.2.22.RELEASE
+webserver-api-8.5.002
+
+Packaged Dependencies:
+jsch-0.2.11
+postgresql-42.6.0
