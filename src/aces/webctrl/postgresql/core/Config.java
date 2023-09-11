@@ -19,12 +19,15 @@ public class Config {
   }
   private Config(){}
   /**
-   * Invoke this whenever {@code connectionURL} is changed.
+   * Resets the link ID for the database tables
    */
   public static void reset(){
-    ID = -1;
-    Sync.versionCompatible = false;
-    Sync.started = false;
+    synchronized (Sync.class){
+      new Sync(Event.SHUTDOWN);
+      ID = -1;
+      Sync.versionCompatible = false;
+      Sync.started = false;
+    }
   }
   public static boolean init(Path file){
     Config.file = file;

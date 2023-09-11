@@ -76,10 +76,13 @@ a {
 a:link,a:visited {
   color: lightgreen;
 }
-a:hover {
+a.nav:link,a.nav:visited {
+  color: violet;
+}
+a:hover,a.nav:hover {
   color:darkgoldenrod;
 }
-a:active {
+a:active,a.nav:active {
   color:teal;
 }
 td, th {

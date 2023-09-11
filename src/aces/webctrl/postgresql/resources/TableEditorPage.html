@@ -1,0 +1,398 @@
+<!--
+  BSD 3-Clause License
+  Copyright (c) 2022, Automatic Controls Equipment Systems, Inc.
+  Contributors: Cameron Vogt (@cvogt729)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      Table Editor
+    </title>
+    <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+    <script>
+      function enc(s){
+        return String(s).replace(/\\/g,"\\\\").replace(/;/g,"\\;")+';';
+      }
+      function registerChange(){
+        if (!changes){
+          changes = true;
+          mainTitle.innerText = "* __TABLE_DISPLAY_NAME__ *";
+          document.title = mainTitle.innerText;
+        }
+      }
+      function unregisterChange(){
+        if (changes){
+          changes = false;
+          mainTitle.innerText = "__TABLE_DISPLAY_NAME__";
+          document.title = mainTitle.innerText;
+        }
+      }
+      function checkSave(){
+        if (changes){
+          alert("Please save changes before continuing.");
+          return false;
+        }else{
+          return true;
+        }
+      }
+      function resize(input){
+        const styles = window.getComputedStyle(input);
+        hiddenSpan.style.fontFamily = styles.fontFamily;
+        hiddenSpan.style.fontSize = styles.fontSize;
+        hiddenSpan.style.fontStyle = styles.fontStyle;
+        hiddenSpan.style.fontWeight = styles.fontWeight;
+        hiddenSpan.style.letterSpacing = styles.letterSpacing;
+        hiddenSpan.style.textTransform = styles.textTransform;
+        hiddenSpan.style.borderLeftWidth = styles.borderLeftWidth;
+        hiddenSpan.style.borderRightWidth = styles.borderRightWidth;
+        hiddenSpan.style.paddingLeft = styles.paddingLeft;
+        hiddenSpan.style.paddingRight = styles.paddingRight;
+        hiddenSpan.innerText = input.value;
+        input.style.width = Math.min(1024,hiddenSpan.offsetWidth)+"px";
+      }
+      function save(){
+        const saveButton = document.getElementById("saveButton");
+        if (!saveButton.disabled){
+          if (!changes){
+            setStatus("white","No updates were made.");
+            return;
+          }
+          if (!data){
+            setStatus("red","INVALID. Please refresh the page.");
+            return;
+          }
+          if (!isValid()){
+            setStatus("red","Please validate input fields before saving.");
+            return;
+          }
+          const instruct = [];
+          {
+            instruct.push(data[0].length.toString()+';');
+            const rows = document.getElementById("tableBody").getElementsByTagName("TR");
+            const newKeySet = new Set();
+            const oldKeySubset = new Set();
+            for (const x of rows){
+              if (x.fields){
+                newKeySet.add(x.fields[0].value);
+              }
+            }
+            for (var i=2;i<data.length;++i){
+              const key = data[i][0];
+              if (newKeySet.has(key)){
+                oldKeySubset.add(key);
+              }else{
+                instruct.push("D;");
+                instruct.push(enc(key));
+              }
+            }
+            for (const x of rows){
+              if (x.fields && x.hasChanged()){
+                if (oldKeySubset.has(x.fields[0].value)){
+                  instruct.push("U;");
+                }else{
+                  instruct.push("C;");
+                }
+                for (const y of x.fields){
+                  instruct.push(enc(y.value));
+                }
+              }
+            }
+          }
+          if (instruct.length==1){
+            unregisterChange();
+            setStatus("white", "No updates were made.");
+            return;
+          }
+          setStatus("white", "Saving...");
+          saveButton.disabled = true;
+          const updates = instruct.join("");
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/TableEditor?table=__TABLE__&action=save");
+          req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+          req.timeout = 10000;
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                try{
+                  data = JSON.parse(this.responseText);
+                  unregisterChange();
+                  render();
+                  setStatus("#50C878", "Saved successfully.");
+                }catch(e){
+                  console.log(e);
+                  setStatus("red", "Failed to parse response.");
+                  data = undefined;
+                  document.getElementById("tableBody").replaceChildren();
+                }
+              }else if (this.status==0){
+                setStatus("red", "Request timed out.");
+              }else{
+                setStatus("red", "HTTP Error "+this.status);
+              }
+              saveButton.disabled = false;
+            }
+          };
+          req.send("data="+encodeURIComponent(updates));
+        }
+      }
+      function discard(){
+        unregisterChange();
+        render();
+        setStatus("#50C878","Changes were discarded.");
+      }
+      function refresh(){
+        const refreshButton = document.getElementById("refreshButton");
+        if (!refreshButton.disabled && checkSave()){
+          refreshButton.disabled = true;
+          setStatus("white","Refreshing...");
+          data = undefined;
+          document.getElementById("tableBody").replaceChildren();
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/TableEditor?table=__TABLE__&action=load");
+          req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+          req.timeout = 10000;
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                try{
+                  data = JSON.parse(this.responseText);
+                  unregisterChange();
+                  render();
+                  setStatus("#50C878", "Refreshed successfully.");
+                }catch(e){
+                  console.log(e);
+                  setStatus("red", "Failed to parse response.");
+                }
+              }else if (this.status==0){
+                setStatus("red", "Request timed out.");
+              }else{
+                setStatus("red", "HTTP Error "+this.status);
+              }
+              refreshButton.disabled = false;
+            }
+          };
+          req.send();
+        }
+      }
+      function render(){
+        const head = document.getElementById("tableHeaderRow");
+        const body = document.getElementById("tableBody");
+        body.replaceChildren();
+        head.replaceChildren();
+        if (data && data.length>1){
+          const header = data[0];
+          const cols = header.length;
+          {
+            const th = document.createElement("TH");
+            th.innerText = "Actions";
+            head.appendChild(th);
+          }
+          for (const x of header){
+            const th = document.createElement("TH");
+            th.innerText = x;
+            head.appendChild(th);
+          }
+          const regexp = [];
+          {
+            const regex = data[1];
+            for (const x of regex){
+              if (x.length>0){
+                regexp.push(new RegExp(x, "gis"));
+              }else{
+                regexp.push(undefined);
+              }
+            }
+          }
+          const createTR = document.createElement("TR");
+          const addRow = function(arg){
+            const newRow = arg==undefined;
+            if (newRow){
+              arg = [];
+              for (var k=0;k<regexp.length;++k){
+                arg.push("");
+              }
+            }
+            const row = arg;
+            const tr = document.createElement("TR");
+            tr.fields = [];
+            tr.hasChanged = function(){
+              if (newRow){
+                return true;
+              }
+              for (var k=0;k<row.length;++k){
+                if (row[k]!==tr.fields[k].value){
+                  return true;
+                }
+              }
+              return false;
+            };
+            {
+              const td = document.createElement("TD");
+              const but = document.createElement("BUTTON");
+              but.innerText = "Delete";
+              but.className = "e";
+              but.onclick = function(){
+                tr.parentNode.removeChild(tr);
+                registerChange();
+                checkDuplicateKeys();
+              };
+              td.appendChild(but);
+              tr.appendChild(td);
+            }
+            for (var j=0;j<row.length;++j){
+              const td = document.createElement("TD");
+              const field = document.createElement("INPUT");
+              td.appendChild(field);
+              tr.fields.push(field);
+              field.className = "c";
+              field.setAttribute("type", "text");
+              field.setAttribute("value", row[j]);
+              const r = regexp[j];
+              if (r){
+                field.validate = function(){
+                  if (r.test(field.value)){
+                    field.style.backgroundColor = "darkgreen";
+                  }else{
+                    field.style.backgroundColor = "darkred";
+                  }
+                  r.lastIndex = 0;
+                };
+              }else if (j==0){
+                field.validate = function(){
+                  if (r){
+                    if (r.test(field.value)){
+                      field.style.backgroundColor = "darkgreen";
+                    }else{
+                      field.style.backgroundColor = "darkred";
+                    }
+                    r.lastIndex = 0;
+                  }else{
+                    field.style.backgroundColor = "darkgreen";
+                  }
+                };
+              }else{
+                field.style.backgroundColor = "darkgreen";
+              }
+              if (field.validate){
+                field.validate();
+              }
+              const J = j;
+              field.oninput = function(){
+                resize(field);
+                registerChange();
+                if (J>0){
+                  if (field.validate){
+                    field.validate();
+                  }
+                }else{
+                  checkDuplicateKeys();
+                }
+              };
+              tr.appendChild(td);
+            }
+            body.insertBefore(tr,createTR);
+            for (const x of tr.getElementsByTagName("INPUT")){
+            resize(x);
+          }
+          };
+          {
+            const createTD = document.createElement("TD");
+            const but = document.createElement("BUTTON");
+            but.innerText = "Create";
+            but.className = "e";
+            but.onclick = function(){
+              addRow();
+              registerChange();
+            };
+            createTD.appendChild(but);
+            createTR.appendChild(createTD);
+          }
+          body.appendChild(createTR);
+          for (var i=2;i<data.length;++i){
+            addRow(data[i]);
+          }
+          checkDuplicateKeys();
+        }
+      }
+      function checkDuplicateKeys(){
+        const rows = document.getElementById("tableBody").getElementsByTagName("TR");
+        for (const x of rows){
+          if (x.fields){
+            const f = x.fields[0];
+            f.style.backgroundColor = "darkgreen";
+            if (f.validate){
+              f.validate();
+            }
+          }
+        }
+        for (var m=0;m+1<rows.length;++m){
+          const M = rows.item(m).fields;
+          if (!M){ continue; }
+          const val = M[0].value.toUpperCase();
+          for (var n=m+1;n<rows.length;++n){
+            const N = rows.item(n).fields;
+            if (N && val===N[0].value.toUpperCase()){
+              M[0].style.backgroundColor = "darkred";
+              N[0].style.backgroundColor = "darkred";
+            }
+          }
+        }
+      }
+      function isValid(){
+        for (const x of document.getElementById("tableBody").getElementsByTagName("INPUT")){
+          if (x.style.backgroundColor!=="darkgreen"){
+            return false;
+          }
+        }
+        return true;
+      }
+      function setStatus(color, message){
+        statusBox.style.color = color;
+        statusBox.innerText = message;
+      }
+    </script>
+  </head>
+  <body>
+    <div style="text-align:center">
+      <h1 id="mainTitle"></h1>
+      <div class="divGrouping">
+        <label for="statusBox">Status:</label>
+        <span id="statusBox"></span>
+      </div>
+      <br><br>
+        <table>
+          <thead><tr id="tableHeaderRow"></tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      <br>
+      <button class="e" id="saveButton" onclick="save()">Save Changes</button>
+      <button class="e" id="discardButton" onclick="discard()">Discard Changes</button>
+      <button class="e" id="refreshButton" onclick="window.location.refresh()">Refresh</button>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+      <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
+      <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
+      <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
+      <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+    </div>
+    <script>
+      var data = undefined;
+      var changes = false;
+      var prompt = true;
+      mainTitle.innerText = "__TABLE_DISPLAY_NAME__";
+      window.onbeforeunload = ()=>{
+        if (prompt && changes){
+          return "Changes remain unsaved. Are you sure you want to leave?";
+        }
+      };
+      refresh();
+    </script>
+  </body>
+</html>

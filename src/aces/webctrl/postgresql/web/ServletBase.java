@@ -47,11 +47,15 @@ public abstract class ServletBase extends HttpServlet {
   public String getHTML(final HttpServletRequest req) throws Throwable {
     if (html==null){
       html = Utility.loadResourceAsString("aces/webctrl/postgresql/resources/"+getClass().getSimpleName()+".html")
-      .replace("href=\"../../../../../root/webapp/main.css\"", "href=\"main.css\"");
+      .replace("href=\"../../../../../root/webapp/main.css\"", "href=\"main.css\"")
+      .replace("__DOCUMENTATION__", "https://github.com/automatic-controls/postgresql-connect");
     }
     return html.replace("__PREFIX__", req.getContextPath());
   }
   public static String getUsername(final HttpServletRequest req) throws Throwable {
     return DirectAccess.getDirectAccess().getUserSystemConnection(req).getOperator().getLoginName().toLowerCase();
+  }
+  public boolean checkWhitelist(final HttpServletRequest req) throws Throwable {
+    return !Sync.lastGeneralSyncSuccessful || Sync.operatorWhitelist.contains(getUsername(req));
   }
 }

@@ -2,14 +2,15 @@
 -- This script should be compatible with PostgreSQL versions 11.18 and later.
 -- The core function of this script is to create and setup the required WebCTRL tables in your database.
 
+-- Schema to contain all relevant tables
+CREATE SCHEMA webctrl;
+
 -- Ensure plpgsql extension is installed
 CREATE EXTENSION IF NOT EXISTS plpgsql;
 
 -- Ensure pgcrypto extension is installed
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Schema to contain all relevant tables
-CREATE SCHEMA webctrl;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA webctrl;
+ALTER EXTENSION pgcrypto SET SCHEMA webctrl;
 
 -- Table that records one row for each connected server
 CREATE TABLE webctrl.servers (
@@ -86,7 +87,7 @@ CREATE TABLE webctrl.addons (
 CREATE INDEX webctrl_addons_id ON webctrl.addons ("server_id" ASC);
 
 -- Create a function that deletes data for non-existent servers
-CREATE OR REPLACE FUNCTION webctrl_clean() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
   BEGIN
     WITH "bad" AS (
       SELECT "a"."server_id" FROM (
@@ -123,7 +124,7 @@ $$ LANGUAGE plpgsql;
 -- Invoke the webctrl_clean() function whenever a server is created or deleted
 CREATE TRIGGER trigger_clean_webctrl
 AFTER INSERT OR DELETE ON webctrl.servers
-FOR EACH STATEMENT EXECUTE FUNCTION webctrl_clean();
+FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_clean();
 
 -- Operators in this table are synchronized to each connected server
 CREATE TABLE webctrl.operator_whitelist (
@@ -149,7 +150,7 @@ CREATE TABLE webctrl.operator_blacklist (
 );
 
 -- Create a function which computes a password hash compatible with WebCTRL (salted Sha512)
-CREATE OR REPLACE FUNCTION webctrl_password_hash("password" TEXT) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION webctrl.webctrl_password_hash("password" TEXT) RETURNS TEXT AS $$
   DECLARE
     "salt" BYTEA := gen_random_bytes(8);
   BEGIN
@@ -158,7 +159,7 @@ CREATE OR REPLACE FUNCTION webctrl_password_hash("password" TEXT) RETURNS TEXT A
 $$ LANGUAGE plpgsql;
 
 -- Create a function to validate a given password against the stored hash value
-CREATE OR REPLACE FUNCTION webctrl_password_validate("password" TEXT, "hash" TEXT) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION webctrl.webctrl_password_validate("password" TEXT, "hash" TEXT) RETURNS BOOLEAN AS $$
   DECLARE
     "data" BYTEA := decode(right("hash", -9), 'base64');
     "len" INTEGER := length("data");
@@ -168,6 +169,21 @@ CREATE OR REPLACE FUNCTION webctrl_password_validate("password" TEXT, "hash" TEX
     RETURN digest(convert_to("password", 'UTF8') || "salt", 'sha512')="hash_";
   END;
 $$ LANGUAGE plpgsql;
+
+-- Create a function to ensure all passwords are hashed
+CREATE OR REPLACE FUNCTION webctrl.webctrl_password_hash_trigger() RETURNS TRIGGER AS $$
+  BEGIN
+    IF NEW."password" IS NOT NULL AND NEW."password" <> '' AND NEW."password" NOT LIKE '{SSHA512}%' THEN
+      NEW."password" := webctrl_password_hash(NEW."password");
+    END IF;
+    RETURN NEW;
+  END;
+$$ LANGUAGE plpgsql;
+
+-- Ensure all passwords are hashed when operator_whitelist is modified
+CREATE TRIGGER trigger_webctrl_password_hash_trigger
+BEFORE INSERT OR UPDATE ON webctrl.operator_whitelist
+FOR EACH ROW EXECUTE FUNCTION webctrl.webctrl_password_hash_trigger();
 
 -- Addons in this table are synchronized to each connected server
 CREATE TABLE webctrl.addon_whitelist (
@@ -206,7 +222,9 @@ CREATE TABLE webctrl.settings (
 -- Populate default values for webctrl.settings
 INSERT INTO webctrl.settings VALUES
   -- Version of PostgreSQL connector addon
-  ('version','0.3.2'),
+  ('version','0.4.0'),
+  -- Whether debug mode is enabled (e.g, verbose log messages when true)
+  ('debug','false'),
   -- Whether to auto-update the PostgreSQL connector addon
   ('auto_update','false'),
   -- Download path in the FTP server for the latest PostgreSQL connector addon

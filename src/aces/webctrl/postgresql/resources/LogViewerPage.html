@@ -1,0 +1,56 @@
+<!--
+  BSD 3-Clause License
+  Copyright (c) 2022, Automatic Controls Equipment Systems, Inc.
+  Contributors: Cameron Vogt (@cvogt729)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      Log Viewer
+    </title>
+    <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+  </head>
+  <body>
+    <div style="text-align:center">
+      <h1 id="mainTitle">Log Viewer</h1>
+      <br>
+        <table>
+          <thead><tr>
+            <th>Timestamp</th>
+            <th>Message</th>
+          </tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+      <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
+      <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
+      <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+    </div>
+    <script>
+      const data = __LOGS__;
+      const body = document.getElementById("tableBody");
+      for (const r of data){
+        const tr = document.createElement("TR");
+        const timeTD = document.createElement("TD");
+        const msgTD = document.createElement("TD");
+        timeTD.className = "e c";
+        msgTD.className = "e";
+        timeTD.innerText = r[0];
+        msgTD.innerText = r[2];
+        msgTD.style.color = r[1]=="true"?"red":"white";
+        msgTD.style.textAlign = "left";
+        body.appendChild(timeTD);
+        body.appendChild(msgTD);
+        body.appendChild(tr);
+      }
+    </script>
+  </body>
+</html>

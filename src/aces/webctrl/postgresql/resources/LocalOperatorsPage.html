@@ -1,0 +1,69 @@
+<!--
+  BSD 3-Clause License
+  Copyright (c) 2022, Automatic Controls Equipment Systems, Inc.
+  Contributors: Cameron Vogt (@cvogt729)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      Local Operators
+    </title>
+    <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+  </head>
+  <body>
+    <div style="text-align:center">
+      <h1 id="mainTitle">Local Operators</h1>
+      <br>
+        <table>
+          <thead><tr>
+            <th>Username</th>
+            <th>Display Name</th>
+            <th>Password</th>
+            <th>Session Timeout (seconds)</th>
+            <th>Auto-Collapse Trees</th>
+          </tr></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+      <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
+      <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
+      <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+    </div>
+    <script>
+      const data = __OPERATORS__;
+      const body = document.getElementById("tableBody");
+      for (const r of data){
+        const tr = document.createElement("TR");
+        const usernameTD = document.createElement("TD");
+        usernameTD.className = "e c";
+        usernameTD.innerText = r[0];
+        body.appendChild(usernameTD);
+        const displayNameTD = document.createElement("TD");
+        displayNameTD.className = "e c";
+        displayNameTD.innerText = r[1];
+        body.appendChild(displayNameTD);
+        const passwordTD = document.createElement("TD");
+        passwordTD.className = "e c";
+        passwordTD.innerText = r[2];
+        body.appendChild(passwordTD);
+        const sessionTD = document.createElement("TD");
+        sessionTD.className = "e c";
+        sessionTD.innerText = r[3];
+        body.appendChild(sessionTD);
+        const collapseTD = document.createElement("TD");
+        collapseTD.className = "e c";
+        collapseTD.innerText = r[4];
+        body.appendChild(collapseTD);
+        body.appendChild(tr);
+      }
+    </script>
+  </body>
+</html>

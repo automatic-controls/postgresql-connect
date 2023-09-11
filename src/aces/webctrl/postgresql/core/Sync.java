@@ -30,6 +30,7 @@ public class Sync {
     synchronized (Sync.class){
       if (Initializer.stop && event!=Event.SHUTDOWN){ return; }
       try{
+        final boolean debug = "true".equalsIgnoreCase(settings.get("debug"));
         final String url = "jdbc:postgresql://"+Config.connectionURL;
         final String username = Config.username;
         final String password = Config.password;
@@ -56,6 +57,49 @@ public class Sync {
               ){
                 s.executeUpdate("INSERT INTO webctrl.events VALUES("+ID+",'STOPPED',CURRENT_TIMESTAMP);");
               }
+            }
+            break;
+          }
+          case SELECT_TABLE:{
+            if (ID==-1 || !started || args.length!=1){
+              return;
+            }
+            args[0] = args[0].replace("$ID", String.valueOf(ID));
+            try(
+              Connection con = DriverManager.getConnection(url, connectionParams);
+            ){
+              syncLog(con,ID);
+              try(
+                Statement s = con.createStatement();
+              ){
+                fillCache(args[0],s);
+              }
+            }
+            break;
+          }
+          case UPDATE_TABLE:{
+            if (ID==-1 || !started || args.length<=1){
+              return;
+            }
+            try(
+              Connection con = DriverManager.getConnection(url, connectionParams);
+            ){
+              con.setAutoCommit(false);
+              syncLog(con,ID);
+              try(
+                Statement s = con.createStatement();
+              ){
+                for (int i=1;i<args.length;++i){
+                  if (Initializer.stop){ return; }
+                  if (debug){
+                    Initializer.log(args[i]);
+                  }
+                  s.executeUpdate(args[i]);
+                }
+                con.commit();
+                fillCache(args[0],s);
+              }
+              con.commit();
             }
             break;
           }
@@ -160,7 +204,7 @@ public class Sync {
                     while (r.next()){
                       k = r.getString(1);
                       v = r.getString(2);
-                      if (k!=null && v!=null){
+                      if (k!=null && v!=null && !k.isEmpty() && !v.isEmpty()){
                         map.put(k,v);
                       }
                     }
@@ -226,7 +270,6 @@ public class Sync {
                 }
                 // Update webctrl.log
                 syncLog(con,ID);
-                con.commit();
                 if (Initializer.stop){ return; }
                 // Delete operators in webctrl.operator_blacklist
                 // Create operators in webctrl.operator_whitelist
@@ -254,7 +297,7 @@ public class Sync {
                         data.password = r.getString(3);
                         data.lvl5_auto_logout = r.getInt(4);
                         data.lvl5_auto_collapse = r.getBoolean(5);
-                        if (data.password.isEmpty()){
+                        if (data.password==null || data.password.isEmpty()){
                           data.password = defaultPassword;
                         }
                         whitelist.put(data.username,data);
@@ -331,7 +374,7 @@ public class Sync {
                     while (r.next()){
                       min = r.getString(2);
                       max = r.getString(3);
-                      if ((min==null || Utility.compareVersions(Initializer.simpleVersion,min)>=0) && (max==null || Utility.compareVersions(Initializer.simpleVersion,max)<=0)){
+                      if ((min==null || min.isEmpty() || Utility.compareVersions(Initializer.simpleVersion,min)>=0) && (max==null || max.isEmpty() || Utility.compareVersions(Initializer.simpleVersion,max)<=0)){
                         addon = r.getString(1);
                         if (addon!=null && !Initializer.getName().equalsIgnoreCase(addon)){
                           blacklist.add(addon.toLowerCase());
@@ -356,7 +399,7 @@ public class Sync {
                     while (r.next()){
                       min = r.getString(5);
                       max = r.getString(6);
-                      if ((min==null || Utility.compareVersions(Initializer.simpleVersion,min)>=0) && (max==null || Utility.compareVersions(Initializer.simpleVersion,max)<=0)){
+                      if ((min==null || min.isEmpty() || Utility.compareVersions(Initializer.simpleVersion,min)>=0) && (max==null || max.isEmpty() || Utility.compareVersions(Initializer.simpleVersion,max)<=0)){
                         addon = r.getString(1);
                         if (addon!=null && !Initializer.getName().equalsIgnoreCase(addon)){
                           d = new AddonDownload();
@@ -418,7 +461,6 @@ public class Sync {
                   s.executeUpdate("INSERT INTO webctrl.events VALUES("+ID+",'SYNCED',CURRENT_TIMESTAMP);");
                 }
                 syncLog(con,ID);
-                con.commit();
               }finally{
                 con.rollback();
               }
@@ -431,8 +473,9 @@ public class Sync {
         success = true;
       }catch(Throwable t){
         if (!(t instanceof InterruptedException)){
-          Initializer.status = "Sync Error";
-          Initializer.log("Sync error.");
+          final String s = "Sync error during: "+event.name();
+          Initializer.status = s;
+          Initializer.log(s);
           Initializer.log(t);
         }
       }finally{
@@ -485,10 +528,47 @@ public class Sync {
           s.addBatch();
         }
         s.executeBatch();
+        if (!con.getAutoCommit()){
+          con.commit();
+        }
       }catch(Throwable t){
         Initializer.logCache.addAll(cache);
         throw t;
       }
+    }
+  }
+  private void fillCache(String query, Statement s) throws Throwable {
+    try(
+      ResultSet r = s.executeQuery(query);
+    ){
+      final TableCache cache = new TableCache();
+      final ResultSetMetaData meta = r.getMetaData();
+      cache.columns = meta.getColumnCount();
+      final int[] types = new int[cache.columns];
+      int i;
+      for (i=0;i<types.length;++i){
+        types[i] = meta.getColumnType(i+1);
+      }
+      cache.data = new ArrayList<String>(cache.columns<<6);
+      cache.rows = 0;
+      String ss;
+      while (r.next()){
+        if (Initializer.stop){ return; }
+        for (i=0;i<types.length;++i){
+          switch (types[i]){
+            case java.sql.Types.BOOLEAN: case java.sql.Types.BIT: {
+              ss = String.valueOf(r.getBoolean(i+1));
+              break;
+            }
+            default:{
+              ss = r.getString(i+1);
+            }
+          }
+          cache.data.add(ss);
+        }
+        ++cache.rows;
+      }
+      TableCache.instance = cache;
     }
   }
 }

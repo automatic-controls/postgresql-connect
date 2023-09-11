@@ -8,12 +8,12 @@ import java.util.*;
  * Details:
  * <p> Readonly Field: Initializer.status, Config.cron.getNextString("N/A"), Config.ID
  * <p> Editable Fields: Config.connectionURL, Config.username, Config.password, Config.cron.toString()
- * <p> Buttons: Save, Sync Now, Download Setup SQL
+ * <p> Buttons: Save, Sync Now, Reset ID, Download Setup SQL
  * <p> Link: Documentation
  */
 public class MainPage extends ServletBase {
   @Override public void exec(final HttpServletRequest req, final HttpServletResponse res) throws Throwable {
-    if (Sync.lastGeneralSyncSuccessful && !Sync.operatorWhitelist.contains(getUsername(req))){
+    if (!checkWhitelist(req)){
       res.sendError(403, "Insufficient permissions.");
       return;
     }
@@ -36,7 +36,10 @@ public class MainPage extends ServletBase {
           final String password = Config.password;
           Config.connectionURL = Utility.coalesce(req.getParameter("connectionURL"), "");
           Config.username = Utility.coalesce(req.getParameter("username"), "");
-          Config.password = Utility.coalesce(req.getParameter("password"), "");
+          final String p = Utility.coalesce(req.getParameter("password"), "");
+          if (!p.isEmpty()){
+            Config.password = p;
+          }
           Config.cron.set(Utility.coalesce(req.getParameter("cron"), ""));
           Config.save();
           if (!connectionURL.equals(Config.connectionURL) || !username.equals(Config.username) || !password.equals(Config.password)){
@@ -51,6 +54,22 @@ public class MainPage extends ServletBase {
         }
         case "syncNow":{
           Initializer.syncNow();
+          break;
+        }
+        case "resetNow":{
+          Config.reset();
+          Config.save();
+          break;
+        }
+        case "testSFTP":{
+          boolean success;
+          try(
+            ConnectSFTP sftp = new ConnectSFTP();
+          ){
+            success = sftp.isOpen();
+          }
+          res.setContentType("text/plain");
+          res.getWriter().print(success?"1":"0");
           break;
         }
         case "downloadSQL":{
