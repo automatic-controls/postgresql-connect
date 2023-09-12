@@ -9,6 +9,11 @@ public class LogMessage {
     this.message = message;
     err = false;
   }
+  public LogMessage(String message, boolean err){
+    stamp = OffsetDateTime.now();
+    this.message = message;
+    this.err = err;
+  }
   public LogMessage(Throwable t){
     stamp = OffsetDateTime.now();
     message = Utility.getStackTrace(t);

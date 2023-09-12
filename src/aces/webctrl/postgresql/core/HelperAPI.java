@@ -283,7 +283,7 @@ public class HelperAPI {
                   Initializer.log(t);
                 }
               }else{
-                Initializer.log("Failed to download \""+x.path+"\" from FTP server.");
+                Initializer.log("Failed to download \""+x.path+"\" from FTP server.",true);
               }
             }
           }
@@ -310,7 +310,7 @@ public class HelperAPI {
         }
       }
       Thread.sleep(timeout);
-      Files.move(Initializer.tmpAddonFile, Initializer.addonsDir.resolve(Initializer.getName()+".update"));
+      Files.move(Initializer.tmpAddonFile, Initializer.addonsDir.resolve(Initializer.getName()+".update"), StandardCopyOption.REPLACE_EXISTING);
       final Path addon = Initializer.addonsDir.resolve(Initializer.AUTO_UPDATE_ADDON+".addon");
       Utility.extractResource("aces/webctrl/postgresql/resources/"+Initializer.AUTO_UPDATE_ADDON+".addon", addon);
       if (!Files.exists(addon)){
@@ -337,7 +337,7 @@ public class HelperAPI {
       for (AddOn x:server.scanForAddOns()){
         if (x!=null && Initializer.AUTO_UPDATE_ADDON.equalsIgnoreCase(x.getName())){
           final WebApp.State s = x.getState();
-          if (s==WebApp.State.RUNNING || s==WebApp.State.STARTING || s==WebApp.State.STARTUP_ERROR){
+          if (s==WebApp.State.RUNNING || s==WebApp.State.STARTING){
             return true;
           }
           break;

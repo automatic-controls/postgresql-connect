@@ -11,7 +11,7 @@ public class ConnectSFTP implements AutoCloseable {
     final String username = Sync.settings.get("ftp_username");
     final String password = Sync.settings.get("ftp_password");
     if (host==null || port==null || username==null || password==null){
-      Initializer.log("Failed to connect to SFTP server because connection settings were not provided.");
+      Initializer.log("Failed to connect to SFTP server because connection settings were not provided.",true);
       return;
     }
     try{

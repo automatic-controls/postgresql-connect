@@ -52,11 +52,11 @@ public class Config {
           password = s.readString();
           cron.set(s.readString());
           if (!s.end()){
-            Initializer.log("Configuration file corrupted. Parameters reverted to defaults.");
+            Initializer.log("Configuration file corrupted. Parameters reverted to defaults.",true);
             revertDefaults();
           }
         }catch(Throwable t){
-          Initializer.log("Configuration file corrupted. Parameters reverted to defaults.");
+          Initializer.log("Configuration file corrupted. Parameters reverted to defaults.",true);
           Initializer.log(t);
           revertDefaults();
         }

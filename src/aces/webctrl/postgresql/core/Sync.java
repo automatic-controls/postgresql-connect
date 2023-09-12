@@ -21,6 +21,7 @@ public class Sync {
   public volatile static boolean lastGeneralSyncSuccessful = false;
   public static volatile boolean versionCompatible = false;
   public volatile boolean success = false;
+  public volatile static boolean delayUpdate = false;
   /** Stores a partial list of mappings from the operator reference name in the WebCTRL database to the operator username in the PostgreSQL database. */
   private final static HashMap<String,String> refusernameCache = new HashMap<String,String>();
   /**
@@ -30,7 +31,7 @@ public class Sync {
     synchronized (Sync.class){
       if (Initializer.stop && event!=Event.SHUTDOWN){ return; }
       try{
-        final boolean debug = "true".equalsIgnoreCase(settings.get("debug"));
+        boolean debug = "true".equalsIgnoreCase(settings.get("debug"));
         final String url = "jdbc:postgresql://"+Config.connectionURL;
         final String username = Config.username;
         final String password = Config.password;
@@ -72,6 +73,9 @@ public class Sync {
               try(
                 Statement s = con.createStatement();
               ){
+                if (debug){
+                  Initializer.log(args[0]);
+                }
                 fillCache(args[0],s);
               }
             }
@@ -92,11 +96,18 @@ public class Sync {
                 for (int i=1;i<args.length;++i){
                   if (Initializer.stop){ return; }
                   if (debug){
-                    Initializer.log(args[i]);
+                    if (args[i].startsWith("INSERT INTO webctrl.operator_whitelist") && !args[i].contains("{SSHA512}")){
+                      Initializer.log("INSERT INTO webctrl.operator_whitelist VALUES (***);");
+                    }else{
+                      Initializer.log(args[i]);
+                    }
                   }
                   s.executeUpdate(args[i]);
                 }
                 con.commit();
+                if (debug){
+                  Initializer.log(args[0]);
+                }
                 fillCache(args[0],s);
               }
               con.commit();
@@ -133,7 +144,9 @@ public class Sync {
                     PreparedStatement s = con.prepareStatement("DELETE FROM webctrl.operator_blacklist WHERE \"username\" = ?;");
                   ){
                     s.setString(1,data.username);
-                    s.executeUpdate();
+                    if (s.executeUpdate()>0 && debug){
+                      Initializer.log("Deleted "+data.username+" from operator_blacklist.");
+                    }
                   }
                 }
                 try(
@@ -163,7 +176,9 @@ public class Sync {
                     PreparedStatement s = con.prepareStatement("INSERT INTO webctrl.operator_blacklist VALUES(?);");
                   ){
                     s.setString(1,oldUsername);
-                    s.executeUpdate();
+                    if (s.executeUpdate()>0 && debug){
+                      Initializer.log("Inserted "+oldUsername+" into operator_blacklist.");
+                    }
                   }
                 }
                 con.commit();
@@ -211,23 +226,40 @@ public class Sync {
                   }
                   con.commit();
                   settings = map;
+                  final boolean d = "true".equalsIgnoreCase(map.get("debug"));
+                  if (d^debug){
+                    debug = d;
+                    Initializer.log("Debug mode "+(d?"en":"dis")+"abled.");
+                  }
                   v = map.get("version");
                   final int ver = Utility.compareVersions(Initializer.addonVersion,v);
                   versionCompatible = ver>=0;
-                  if (!versionCompatible){
+                  if (versionCompatible){
+                    delayUpdate = false;
+                  }else{
                     String update = map.get("auto_update");
                     if (update!=null){
                       update = update.trim();
                     }
                     if (update!=null && (update.equalsIgnoreCase("true") || update.equalsIgnoreCase("1"))){
-                      HelperAPI.selfUpdate();
-                      Initializer.log("Attempting auto-update from v"+Initializer.addonVersion+" to v"+v);
-                      Initializer.stop = true;
-                      success = true;
+                      if (delayUpdate){
+                        delayUpdate = false;
+                        Initializer.log("Warning - Infinite self-update loop detected.", true);
+                      }else if (HelperAPI.selfUpdate()){
+                        Initializer.log("Attempting auto-update from v"+Initializer.addonVersion+" to v"+v);
+                        Initializer.stop = true;
+                        success = true;
+                        return;
+                      }else{
+                        Initializer.log("Warning - Self-update function failed.", true);
+                      }
                     }else{
-                      Initializer.status = "Version Mismatch: "+Initializer.addonVersion+" != "+v;
+                      String s = "Version Mismatch: "+Initializer.addonVersion+" != "+v;
+                      Initializer.status = s;
+                      if (debug){
+                        Initializer.log(s);
+                      }
                     }
-                    return;
                   }
                 }
                 if (Initializer.stop){ return; }
@@ -475,7 +507,7 @@ public class Sync {
         if (!(t instanceof InterruptedException)){
           final String s = "Sync error during: "+event.name();
           Initializer.status = s;
-          Initializer.log(s);
+          Initializer.log(s,true);
           Initializer.log(t);
         }
       }finally{
@@ -504,7 +536,7 @@ public class Sync {
     }
     if (ID<0){
       con.rollback();
-      Initializer.log("Failed to automatically set server ID.");
+      Initializer.log("Failed to automatically set server ID.",true);
       return -1;
     }else{
       con.commit();

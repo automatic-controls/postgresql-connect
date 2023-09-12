@@ -1,10 +1,8 @@
 package aces.webctrl.postgresql.core;
 import java.util.*;
 import java.time.*;
-import java.time.format.*;
 import org.springframework.scheduling.support.*;
 public class CronExpression {
-  public final static DateTimeFormatter format = DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
   private volatile String expr = null;
   private volatile CronSequenceGenerator gen = null;
   private volatile long next = -1L;
@@ -71,6 +69,6 @@ public class CronExpression {
    * @return a formatted datetime {@code String} representing the specified instant in time.
    */
   public static String format(long epochMilli){
-    return format.format(Instant.ofEpochMilli(epochMilli));
+    return Utility.timestampFormat.format(Instant.ofEpochMilli(epochMilli));
   }
 }

@@ -35,8 +35,6 @@ public class Initializer implements ServletContextListener {
   private volatile static Thread mainThread = null;
   /** Becomes true when the servlet context is destroyed */
   public volatile static boolean stop = false;
-  /** Becomes true when the main processing thread terminates */
-  private volatile static boolean stopped = false;
   /** Used to initiate immediate manual syncs. */
   private final static Object syncNotifier = new Object();
   /** Whether to initiate an immediate sync. */
@@ -73,18 +71,25 @@ public class Initializer implements ServletContextListener {
     }
     mainThread = new Thread(){
       public void run(){
+        try{
+          if (Files.exists(addonsDir.resolve(Initializer.AUTO_UPDATE_ADDON+".addon"))){
+            Sync.delayUpdate = true;
+          }
+        }catch(Throwable t){
+          log(t);
+        }
         long time, x;
         while (!stop){
           try{
             while (!stop){
               time = System.currentTimeMillis();
               if (time>=nextSave){
-                HelperAPI.removeAddon(AUTO_UPDATE_ADDON, true);
                 Config.save();
                 nextSave = time+86400000L;
                 if (stop){ break; }
               }
               if (syncNow || (x=Config.cron.getNext())!=-1 && time>=x){
+                HelperAPI.removeAddon(AUTO_UPDATE_ADDON, true);
                 new Sync(Event.GENERAL);
                 Config.cron.reset();
                 syncNow = false;
@@ -102,7 +107,6 @@ public class Initializer implements ServletContextListener {
             }
           }catch(InterruptedException e){}
         }
-        stopped = true;
       }
     };
     status = "Initialized";
@@ -123,9 +127,10 @@ public class Initializer implements ServletContextListener {
       }
       Config.save();
       //Wait for the primary processing thread to terminate.
-      while (!stopped){
+      while (true){
         try{
           mainThread.join();
+          break;
         }catch(InterruptedException e){}
       }
     }
@@ -176,6 +181,14 @@ public class Initializer implements ServletContextListener {
    */
   public synchronized static void log(String str){
     logCache.add(new LogMessage(str));
+    logger.println(str);
+    checkLogCache();
+  }
+  /**
+   * Logs a message.
+   */
+  public synchronized static void log(String str, boolean error){
+    logCache.add(new LogMessage(str, error));
     logger.println(str);
     checkLogCache();
   }
