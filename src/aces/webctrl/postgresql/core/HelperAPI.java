@@ -3,10 +3,30 @@ import java.util.*;
 import java.io.*;
 import java.nio.file.*;
 import com.controlj.green.webserver.*;
+import com.controlj.green.core.ui.UserSession;
 import com.controlj.green.datatable.util.CoreHelper;
 public class HelperAPI {
   private final static long timeout = 300L;
   private HelperAPI(){}
+  /**
+   * Terminates sessions corresponding to the given set of usernames.
+   * @return whether all relevant sessions were closed.
+   */
+  public static boolean logout(Set<String> usernames){
+    try{
+      String n;
+      for (final UserSession session:UserSession.getAllUserSessions()){
+        n = session.getOperator().getLoginName();
+        if (n!=null && usernames.contains(n.toLowerCase())){
+          session.close();
+        }
+      }
+      return true;
+    }catch(Throwable t){
+      Initializer.log(t);
+    }
+    return false;
+  }
   /**
    * @return a collection of all local WebCTRL operators where usernames are mapped to display names, or {@code null} if an error occurs.
    */

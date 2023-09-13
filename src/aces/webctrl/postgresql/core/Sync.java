@@ -339,6 +339,7 @@ public class Sync {
                   con.commit();
                   if (Initializer.stop){ return; }
                   operatorWhitelist = new HashSet<String>(whitelist.keySet());
+                  final HashSet<String> deletedOps = new HashSet<String>(16);
                   try(
                     OperatorLink link = new OperatorLink(false);
                   ){
@@ -348,6 +349,7 @@ public class Sync {
                       if (blacklist.contains(opname)){
                         refusernameCache.remove(op.getReferenceName());
                         op.delete();
+                        deletedOps.add(opname);
                         Initializer.log("Deleted blacklisted operator: "+opname);
                       }else if ((data = whitelist.get(opname))!=null){
                         data.write(link, op);
@@ -363,6 +365,8 @@ public class Sync {
                       Initializer.log("Created whitelisted operator: "+d.username);
                     }
                     link.commit();
+                  }finally{
+                    HelperAPI.logout(deletedOps);
                   }
                 }
                 if (Initializer.stop){ return; }
@@ -492,6 +496,7 @@ public class Sync {
                 ){
                   s.executeUpdate("INSERT INTO webctrl.events VALUES("+ID+",'SYNCED',CURRENT_TIMESTAMP);");
                 }
+                con.commit();
                 syncLog(con,ID);
               }finally{
                 con.rollback();

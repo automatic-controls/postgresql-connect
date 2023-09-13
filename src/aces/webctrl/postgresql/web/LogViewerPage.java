@@ -20,7 +20,7 @@ public class LogViewerPage extends ServletBase {
     final ArrayList<LogMessage> list = new ArrayList<LogMessage>(Initializer.logCache);
     final int len = list.size();
     LogMessage l;
-    boolean first = false;
+    boolean first = true;
     sb.append("[\n");
     for (int i=len-1;i>=0;--i){
       l = list.get(i);
