@@ -10,6 +10,15 @@ public class TableCache {
         return Utility.escapePostgreSQL(s);
       }
     };
+    String timezone = OffsetDateTime.now().getOffset().getId();
+    {
+      char c = timezone.charAt(0);
+      if (c=='-'){
+        timezone = '+'+timezone.substring(1);
+      }else if (c=='+'){
+        timezone = '-'+timezone.substring(1);
+      }
+    }
     TableTemplate x;
     {
       //addon_blacklist
@@ -57,8 +66,18 @@ public class TableCache {
       //operator_blacklist
       x = new TableTemplate("operator_blacklist", "Operator Blacklist");
       x.keyColumn = "username";
-      x.query = "SELECT * FROM webctrl.operator_blacklist ORDER BY \"username\";";
-      x.header = "[\"Username\"],[\"^.+$\"]";
+      x.query =
+        "SELECT\n"+
+        "  \"x\".\"username\",\n"+
+        "  COALESCE(\"y\".\"exceptions\", 0) AS \"exceptions\"\n"+
+        "FROM webctrl.operator_blacklist \"x\" LEFT JOIN (\n"+
+        "  SELECT \"username\", COUNT(*) AS \"exceptions\"\n"+
+        "  FROM webctrl.operator_blacklist_exceptions\n"+
+        "  GROUP BY \"username\"\n"+
+        ") \"y\" ON \"x\".\"username\" = \"y\".\"username\"\n"+
+        "ORDER BY \"x\".\"username\";";
+      x.header = "[\"Username\",\"Exceptions\"],[\"^.+$\",\"<READONLY>0\"]";
+      x.conversion = basic;
       tables.put(x.name,x);
     }
     {
@@ -102,18 +121,56 @@ public class TableCache {
     }
     {
       //log
-      String timezone = OffsetDateTime.now().getOffset().getId();
-      {
-        char c = timezone.charAt(0);
-        if (c=='-'){
-          timezone = '+'+timezone.substring(1);
-        }else if (c=='+'){
-          timezone = '-'+timezone.substring(1);
-        }
-      }
       x = new TableTemplate("log", "Log");
       x.query = "SELECT DATE_TRUNC('seconds', \"time\" AT TIME ZONE '"+timezone+"')::TEXT, \"error\", \"message\" FROM webctrl.log WHERE \"server_id\" = $ID AND \"time\"+(INTERVAL '2 days')>CURRENT_TIMESTAMP ORDER BY \"time\" DESC;";
       x.header = "[\"Timestamp\",\"Error\",\"Message\"]";
+      tables.put(x.name,x);
+    }
+    {
+      //trend_mappings
+      x = new TableTemplate("trend_mappings", "Trend Mappings");
+      x.keyColumn = "id";
+      x.otherColumns = "\"server_id\",\"name\",\"persistent_identifier\",\"retain_data\"";
+      x.query =
+        "SELECT\n"+
+        "  \"x\".\"id\",\n"+
+        "  \"x\".\"server_id\",\n"+
+        "  \"z\".\"name\" AS \"server_name\",\n"+
+        "  \"x\".\"name\",\n"+
+        "  \"x\".\"persistent_identifier\",\n"+
+        "  \"x\".\"retain_data\",\n"+
+        "  COALESCE(\"y\".\"sample_count\", 0) AS \"sample_count\",\n"+
+        "  COALESCE(DATE_TRUNC('seconds', \"y\".\"first_sample\" AT TIME ZONE '"+timezone+"')::TEXT, 'N/A') AS \"first_sample\",\n"+
+        "  COALESCE(DATE_TRUNC('seconds', \"y\".\"last_sample\" AT TIME ZONE '"+timezone+"')::TEXT, 'N/A') AS \"last_sample\"\n"+
+        "FROM webctrl.trend_mappings \"x\"\n"+
+        "LEFT JOIN (\n"+
+        "  SELECT\n"+
+        "    \"id\",\n"+
+        "    MIN(\"time\") AS \"first_sample\",\n"+
+        "    MAX(\"time\") AS \"last_sample\",\n"+
+        "    COUNT(*) AS \"sample_count\"\n"+
+        "  FROM webctrl.trend_data\n"+
+        "  GROUP BY \"id\"\n"+
+        ") \"y\"\n"+
+        "ON \"x\".\"id\" = \"y\".\"id\"\n"+
+        "LEFT JOIN (\n"+
+        "  SELECT \"id\", \"name\" FROM webctrl.servers\n"+
+        ") \"z\"\n"+
+        "ON \"x\".\"server_id\" = \"z\".\"id\"\n"+
+        "ORDER BY \"x\".\"server_id\";";
+      x.header = "[\"Trend ID\",\"Server ID\",\"Server Name\",\"Name\",\"Persistent Identifier\",\"Retain Data (Days)\",\"Sample Count\",\"First Sample\",\"Last Sample\"],"+
+        "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^.+$\",\"^.+$\",\"^\\\\d+$\",\"<READONLY>0\",\"<READONLY>N/A\",\"<READONLY>N/A\"]";
+      x.conversion = new BiFunction<Integer,String,String>(){
+        @Override public String apply(Integer i, String s){
+          if (i==0){
+            return s.equalsIgnoreCase("N/A")?"DEFAULT":String.valueOf(Integer.parseInt(s));
+          }else if (i==1 || i==4){
+            return String.valueOf(Integer.parseInt(s));
+          }else{
+            return Utility.escapePostgreSQL(s);
+          }
+        }
+      };
       tables.put(x.name,x);
     }
   }

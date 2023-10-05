@@ -115,6 +115,26 @@
           req.send();
         }
       }
+      function toggleDev(){
+        devButton.disabled = true;
+        const req = new XMLHttpRequest();
+        req.open("POST","__PREFIX__/index?type=toggleDev");
+        req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+        req.timeout = 8000;
+        req.onreadystatechange = function(){
+          if (this.readyState===4){
+            if (this.status===200){
+              statusBox.innerText = "Developer mode "+(this.responseText=="1"?"en":"dis")+"abled";
+            }else if (this.status==0){
+              statusBox.innerText = "Request timed out.";
+            }else{
+              statusBox.innerText = "HTTP Error "+this.status;
+            }
+            devButton.disabled = false;
+          }
+        };
+        req.send();
+      }
       function save(){
         saveButton.disabled = true;
         const req = new XMLHttpRequest();
@@ -156,7 +176,7 @@
             }else{
               statusBox.innerText = "HTTP Error "+this.status;
             }
-            setTimeout(refresh,20000);
+            setTimeout(refresh,10000);
           }
         };
         req.send();
@@ -218,16 +238,19 @@
       <button class="e" id="syncButton" onclick="syncNow()">Sync Now</button>
       <button class="e" id="resetButton" onclick="resetNow()">Reset ID</button>
       <button class="e" id="sftpButton" onclick="testSFTP()">Test SFTP</button>
+      <button class="e" id="devButton" onclick="toggleDev()">Toggle Developer Mode</button>
       <a class="e" href="__PREFIX__/index?type=downloadSQL" download="Setup.sql" target="_blank">Download Setup SQL</a>
       <br><br>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
       <br><br>
       <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
       <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
+      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
       <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
       <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
     </div>

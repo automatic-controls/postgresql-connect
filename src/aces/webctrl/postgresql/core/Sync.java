@@ -1,8 +1,11 @@
 package aces.webctrl.postgresql.core;
-import com.controlj.green.addonsupport.access.*;
 import com.controlj.green.core.data.*;
+import com.controlj.green.addonsupport.access.*;
+import com.controlj.green.addonsupport.access.trend.*;
+import com.controlj.green.addonsupport.access.aspect.*;
 import java.util.*;
 import java.sql.*;
+import java.time.*;
 /**
  * Object intended to encapsulate a single synchronization event.
  */
@@ -193,8 +196,12 @@ public class Sync {
             break;
           }
           case GENERAL:{
+            SystemConnection sysCon = null;
             if (serverName==null){
-              DirectAccess.getDirectAccess().getRootSystemConnection().runReadAction(FieldAccessFactory.newDisabledFieldAccess(), new ReadAction(){
+              if (sysCon==null){
+                sysCon = Initializer.getConnection();
+              }
+              sysCon.runReadAction(FieldAccessFactory.newDisabledFieldAccess(), new ReadAction(){
                 public void execute(SystemAccess sys){
                   serverName = sys.getGeoRoot().getDisplayName();
                 }
@@ -313,7 +320,7 @@ public class Sync {
                     Statement s = con.createStatement();
                   ){
                     try(
-                      ResultSet r = s.executeQuery("SELECT * FROM webctrl.operator_blacklist;");
+                      ResultSet r = s.executeQuery("SELECT \"x\".* FROM webctrl.operator_blacklist \"x\" LEFT JOIN webctrl.operator_blacklist_exceptions \"y\" ON \"y\".\"server_id\" = "+ID+" AND \"x\".\"username\" = \"y\".\"username\" WHERE \"y\".\"server_id\" IS NULL;");
                     ){
                       while (r.next()){
                         blacklist.add(r.getString(1).toLowerCase());
@@ -495,6 +502,238 @@ public class Sync {
                   Statement s = con.createStatement();
                 ){
                   s.executeUpdate("INSERT INTO webctrl.events VALUES("+ID+",'SYNCED',CURRENT_TIMESTAMP);");
+                }
+                con.commit();
+                if (Initializer.stop){ return; }
+                // UPDATE webctrl.trend_data
+                {
+                  final ArrayList<TrendMapping> trends = new ArrayList<TrendMapping>();
+                  try(
+                    Statement s = con.createStatement();
+                    ResultSet r = s.executeQuery(
+                      "SELECT\n"+
+                      "  \"x\".\"id\",\n"+
+                      "  \"x\".\"persistent_identifier\",\n"+
+                      "  GREATEST(\"y\".\"time\", CURRENT_TIMESTAMP-make_interval(days=>\"retain_data\")) AS \"start\"\n"+
+                      "FROM (\n"+
+                      "  SELECT * FROM webctrl.trend_mappings WHERE \"server_id\" = "+ID+"\n"+
+                      ") \"x\" LEFT JOIN (\n"+
+                      "  SELECT\n"+
+                      "    \"x\".*\n"+
+                      "  FROM (\n"+
+                      "    SELECT DISTINCT ON (\"id\")\n"+
+                      "      \"id\",\n"+
+                      "      \"time\"\n"+
+                      "    FROM webctrl.trend_data\n"+
+                      "    ORDER BY \"id\" ASC, \"time\" DESC\n"+
+                      "  ) \"x\" INNER JOIN (\n"+
+                      "    SELECT \"id\" FROM webctrl.trend_mappings WHERE \"server_id\" = "+ID+"\n"+
+                      "  ) \"y\"\n"+
+                      "  ON \"x\".\"id\" = \"y\".\"id\"\n"+
+                      ") \"y\"\n"+
+                      "ON \"x\".\"id\" = \"y\".\"id\";"
+                    );
+                  ){
+                    TrendMapping tm;
+                    OffsetDateTime t;
+                    while (r.next()){
+                      t = r.getObject(3, OffsetDateTime.class);
+                      if (t==null){
+                        continue;
+                      }
+                      tm = new TrendMapping();
+                      tm.ID = r.getInt(1);
+                      tm.persistentIdentifier = r.getString(2);
+                      tm.start = java.util.Date.from(t.toInstant());
+                      trends.add(tm);
+                    }
+                  }
+                  if (Initializer.stop){ return; }
+                  if (!trends.isEmpty()){
+                    final boolean debugg = debug;
+                    final java.util.Date now = new java.util.Date();
+                    final ArrayList<Long> times = new ArrayList<Long>();
+                    final Container<ArrayList<Integer>> intValues = new Container<ArrayList<Integer>>();
+                    final Container<ArrayList<Double>> doubleValues = new Container<ArrayList<Double>>();
+                    final Container<BitSet> boolValues = new Container<BitSet>();
+                    final Container<BitSet> boolNulls = new Container<BitSet>();
+                    if (sysCon==null){
+                      sysCon = Initializer.getConnection();
+                    }
+                    for (final TrendMapping tm:trends){
+                      final int cacheSize = Math.min((int)((now.getTime()-tm.start.getTime())/300000L), 65536);
+                      final TrendRange rng = TrendRangeFactory.byDateRange(tm.start, now);
+                      final long startTime = tm.start.getTime();
+                      times.clear();
+                      intValues.x = null;
+                      doubleValues.x = null;
+                      boolValues.x = null;
+                      boolNulls.x = null;
+                      try{
+                        sysCon.runReadAction(FieldAccessFactory.newFieldAccess(), new ReadAction(){
+                          @Override public void execute(SystemAccess sys){
+                            try{
+                              Location loc = sys.getTree(SystemTree.Geographic).resolve(tm.persistentIdentifier);
+                              times.ensureCapacity(cacheSize);
+                              if (loc.hasAspect(AnalogTrendSource.class)){
+                                final AnalogTrendSource s = loc.getAspect(AnalogTrendSource.class);
+                                doubleValues.x = new ArrayList<Double>(cacheSize);
+                                TrendData<TrendAnalogSample> data = s.getTrendData(rng);
+                                data.process(new TrendProcessor<TrendAnalogSample>(){
+                                  @Override public void processData(TrendAnalogSample sample){
+                                    final long time = sample.getTimeInMillis();
+                                    if (time>startTime){
+                                      times.add(time);
+                                      doubleValues.x.add(sample.doubleValue());
+                                    }
+                                  }
+                                  @Override public void processHole(java.util.Date start, java.util.Date end){
+                                    final long time = start.getTime();
+                                    if (time>startTime){
+                                      times.add(time);
+                                      doubleValues.x.add(null);
+                                    }
+                                  }
+                                  @Override public void processEnd(java.util.Date time, TrendAnalogSample sample){}
+                                  @Override public void processStart(java.util.Date time, TrendAnalogSample sample){}
+                                });
+                              }else if (loc.hasAspect(EquipmentColorTrendSource.class)){
+                                final EquipmentColorTrendSource s = loc.getAspect(EquipmentColorTrendSource.class);
+                                intValues.x = new ArrayList<Integer>(cacheSize);
+                                TrendData<TrendEquipmentColorSample> data = s.getTrendData(rng);
+                                data.process(new TrendProcessor<TrendEquipmentColorSample>(){
+                                  @Override public void processData(TrendEquipmentColorSample sample){
+                                    final long time = sample.getTimeInMillis();
+                                    if (time>startTime){
+                                      times.add(time);
+                                      intValues.x.add(sample.value().getColor().getRGB());
+                                    }
+                                  }
+                                  @Override public void processHole(java.util.Date start, java.util.Date end){
+                                    final long time = start.getTime();
+                                    if (time>startTime){
+                                      times.add(time);
+                                      intValues.x.add(null);
+                                    }
+                                  }
+                                  @Override public void processEnd(java.util.Date time, TrendEquipmentColorSample sample){}
+                                  @Override public void processStart(java.util.Date time, TrendEquipmentColorSample sample){}
+                                });
+                              }else if (loc.hasAspect(DigitalTrendSource.class)){
+                                final DigitalTrendSource s = loc.getAspect(DigitalTrendSource.class);
+                                boolValues.x = new BitSet(cacheSize);
+                                boolNulls.x = new BitSet(cacheSize);
+                                TrendData<TrendDigitalSample> data = s.getTrendData(rng);
+                                final Container<Integer> i = new Container<Integer>(0);
+                                data.process(new TrendProcessor<TrendDigitalSample>(){
+                                  @Override public void processData(TrendDigitalSample sample){
+                                    final long time = sample.getTimeInMillis();
+                                    if (time>startTime){
+                                      times.add(time);
+                                      if (sample.getState()){
+                                        boolValues.x.set(i.x);
+                                      }
+                                      ++i.x;
+                                    }
+                                  }
+                                  @Override public void processHole(java.util.Date start, java.util.Date end){
+                                    final long time = start.getTime();
+                                    if (time>startTime){
+                                      times.add(time);
+                                      boolNulls.x.set(i.x);
+                                      ++i.x;
+                                    }
+                                  }
+                                  @Override public void processEnd(java.util.Date time, TrendDigitalSample sample){}
+                                  @Override public void processStart(java.util.Date time, TrendDigitalSample sample){}
+                                });
+                              }
+                            }catch(Throwable t){
+                              if (debugg){
+                                Initializer.log(t);
+                              }
+                            }
+                          }
+                        });
+                      }catch(Throwable t){
+                        Initializer.log(t);
+                      }
+                      if (Initializer.stop){ return; }
+                      final int size = times.size();
+                      if (size>0){
+                        if (intValues.x!=null){
+                          try(
+                            PreparedStatement s = con.prepareStatement("INSERT INTO webctrl.trend_data VALUES ("+tm.ID+",?,NULL,?,NULL);");
+                          ){
+                            Integer j;
+                            for (int i=0;i<size;++i){
+                              s.setObject(1, Instant.ofEpochMilli(times.get(i)).atOffset(ZoneOffset.UTC));
+                              j = intValues.x.get(i);
+                              if (j==null){
+                                s.setNull(2,Types.INTEGER);
+                              }else{
+                                s.setInt(2,j);
+                              }
+                              s.addBatch();
+                            }
+                            s.executeBatch();
+                          }
+                          con.commit();
+                        }else if (doubleValues.x!=null){
+                          try(
+                            PreparedStatement s = con.prepareStatement("INSERT INTO webctrl.trend_data VALUES ("+tm.ID+",?,NULL,NULL,?);");
+                          ){
+                            Double j;
+                            for (int i=0;i<size;++i){
+                              s.setObject(1, Instant.ofEpochMilli(times.get(i)).atOffset(ZoneOffset.UTC));
+                              j = doubleValues.x.get(i);
+                              if (j==null){
+                                s.setNull(2,Types.DOUBLE);
+                              }else{
+                                s.setDouble(2,j);
+                              }
+                              s.addBatch();
+                            }
+                            s.executeBatch();
+                          }
+                          con.commit();
+                        }else if (boolValues.x!=null){
+                          try(
+                            PreparedStatement s = con.prepareStatement("INSERT INTO webctrl.trend_data VALUES ("+tm.ID+",?,?,NULL,NULL);");
+                          ){
+                            for (int i=0;i<size;++i){
+                              s.setObject(1, Instant.ofEpochMilli(times.get(i)).atOffset(ZoneOffset.UTC));
+                              if (boolNulls.x.get(i)){
+                                s.setNull(2,Types.BIT);
+                              }else{
+                                s.setBoolean(2,boolValues.x.get(i));
+                              }
+                              s.addBatch();
+                            }
+                            s.executeBatch();
+                          }
+                          con.commit();
+                        }
+                        if (Initializer.stop){ return; }
+                      }
+                    }
+                  }
+                  try(
+                    Statement s = con.createStatement();
+                  ){
+                    int x = s.executeUpdate(
+                      "WITH \"thresh\" AS (\n"+
+                      "  SELECT\n"+
+                      "    \"id\",\n"+
+                      "    CURRENT_TIMESTAMP-make_interval(days=>\"retain_data\") AS \"start\"\n"+
+                      "  FROM webctrl.trend_mappings\n"+
+                      ") DELETE FROM webctrl.trend_data \"a\" USING \"thresh\" \"b\"\n"+
+                      "WHERE \"a\".\"id\" = \"b\".\"id\" AND \"a\".\"time\" < \"b\".\"start\";"
+                    );
+                    if (x>0 && debug){
+                      Initializer.log("Deleted "+x+" expired values from trend database.");
+                    }
+                  }
                 }
                 con.commit();
                 syncLog(con,ID);

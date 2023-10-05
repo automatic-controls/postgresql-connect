@@ -28,6 +28,24 @@ public class HelperAPI {
     return false;
   }
   /**
+   * Toggles developer mode for all sessions corresponding to the given user.
+   * @return whether developer mode is enabled
+   */
+  public static boolean toggleDevMode(String username) throws Throwable {
+    boolean first = true;
+    boolean dev = false;
+    for (final UserSession session:UserSession.getAllUserSessions()){
+      if (username.equalsIgnoreCase(session.getOperator().getLoginName())){
+        if (first){
+          first = false;
+          dev = !session.getIsDeveloperEnabledFlag();
+        }
+        session.setIsDeveloper(dev);
+      }
+    }
+    return dev;
+  }
+  /**
    * @return a collection of all local WebCTRL operators where usernames are mapped to display names, or {@code null} if an error occurs.
    */
   public static Map<String,String> getLocalOperators(){

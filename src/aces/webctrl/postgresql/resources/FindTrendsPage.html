@@ -1,0 +1,206 @@
+<!--
+  BSD 3-Clause License
+  Copyright (c) 2022, Automatic Controls Equipment Systems, Inc.
+  Contributors: Cameron Vogt (@cvogt729)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      Trend Browser
+    </title>
+    <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+    <script>
+      function refresh(){
+        const mainDiv = document.getElementById("mainDiv");
+        mainDiv.childrenCached = false;
+        mainDiv.expandDisabled = false;
+        expand(mainDiv, "root");
+      }
+      function expand(div, id, f){
+        div.style.display = "inline-block";
+        if (div.childrenCached){
+          if (f){
+            f();
+          }
+        }else{
+          div.replaceChildren();
+          const parent = div;
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/FindTrends");
+          req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+          req.timeout = 6000;
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                try{
+                  const data = JSON.parse(this.responseText);
+                  if (data.length==0){
+                    parent.expandDisabled = true;
+                    parent.style.display = "none";
+                  }else{
+                    for (const x of data){
+                      const xID = x["id"];
+                      const xName = x["name"];
+                      const xTrend = x["trend"];
+                      const xType = x["type"];
+                      const xIcon = x["icon"];
+                      const arrow = document.createElement("IMG");
+                      arrow.expanded = false;
+                      arrow.style.cursor = "pointer";
+                      arrow.setAttribute("src", imgCollapse);
+                      parent.appendChild(arrow);
+                      const image = xIcon?document.createElement("IMG"):null;
+                      if (image!==null){
+                        image.style.cursor = "pointer";
+                        image.setAttribute("src", xIcon);
+                        parent.appendChild(image);
+                      }
+                      const span = document.createElement("SPAN");
+                      span.style.marginLeft = "4px";
+                      span.style.whiteSpace = "nowrap";
+                      span.style.verticalAlign = "top";
+                      span.style.cursor = "pointer";
+                      span.innerText = xName;
+                      parent.appendChild(span);
+                      if (xTrend){
+                        const span2 = document.createElement("SPAN");
+                        span2.style.marginLeft = "20px";
+                        span2.style.whiteSpace = "nowrap";
+                        span2.style.verticalAlign = "top";
+                        span2.style.color = "turquoise";
+                        span2.style.cursor = "pointer";
+                        span2.innerText = xType;
+                        span2.onclick = function(){
+                          copy(xID);
+                        };
+                        parent.appendChild(span2);
+                      }
+                      const div = document.createElement("DIV");
+                      div.style.paddingLeft = "16px";
+                      div.style.display = "none";
+                      div.childrenCached = false;
+                      div.expandDisabled = false;
+                      const br = document.createElement("BR");
+                      br.style.display = "none";
+                      parent.appendChild(br);
+                      parent.appendChild(div);
+                      parent.appendChild(document.createElement("BR"));
+                      const onclick = function(){
+                        if (!div.expandDisabled){
+                          arrow.expanded^=true;
+                          if (arrow.expanded){
+                            expand(div, xID, ()=>{
+                              arrow.setAttribute("src", div.expandDisabled?imgBlank:imgExpand);
+                              if (!div.expandDisabled){
+                                br.style.display = "initial";
+                              }
+                            });
+                          }else{
+                            div.style.display = "none";
+                            br.style.display = "none";
+                            arrow.setAttribute("src", imgCollapse);
+                          }
+                        }
+                      };
+                      arrow.onclick = onclick;
+                      if (image!==null){
+                        image.onclick = onclick;
+                      }
+                      span.onclick = onclick;
+                    }
+                  }
+                  parent.childrenCached = true;
+                  setStatus("#50C878", "Loaded successfully.");
+                }catch(e){
+                  console.log(e);
+                  setStatus("red", "Failed to parse response.");
+                }
+                if (f){
+                  f();
+                }
+              }else if (this.status==0){
+                setStatus("red", "Request timed out.");
+              }else{
+                setStatus("red", "HTTP Error "+this.status);
+              }
+            }
+          };
+          setStatus("white", "Loading...");
+          req.send("id="+encodeURIComponent(id));
+        }
+      }
+      function copy(s){
+        if (s===undefined){
+          setStatus("red", "Nothing to copy.");
+          return;
+        }
+        const bad = (e)=>{
+          console.log(e);
+          setStatus("red", "Clipboard could not be modified.");
+          prompt("Clipboard could not be modified. Please manually copy:", s);
+        };
+        try{
+          navigator.clipboard.writeText(s).then(()=>{setStatus("#50C878","Identifier copied.");},bad);
+        }catch(e){
+          bad(e);
+        }
+      }
+      function setStatus(color, message){
+        statusBox.style.color = color;
+        statusBox.innerText = message;
+      }
+    </script>
+  </head>
+  <body>
+    <div style="text-align:center">
+      <h1>Trend Browser</h1>
+      <div class="divGrouping">
+        <label for="statusBox">Status:</label>
+        <span id="statusBox"></span>
+      </div>
+      <br>
+      <button class="e" onclick="refresh()">Refresh</button>
+      <br><br>
+      <div id="mainDiv" style="display:inline-block;text-align:left;color:lightsteelblue">
+        <!--
+        <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/tree/clean_expanded.png">
+        <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/type/system.gif">
+        <span style="white-space:nowrap;margin-left:4px;vertical-align:top">Automatic Controls</span>
+        <br>
+        <div style="display:inline-block;padding-left:16px">
+          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/tree/clean_collapsed.png">
+          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/type/area.gif">
+          <span style="white-space:nowrap;margin-left:4px;vertical-align:top">Main Floor</span>
+          <span style="white-space:nowrap;margin-left:16px;vertical-align:top;color:turquoise;cursor:pointer" onclick="copy(this.innerText)">(DBID:2197)</span>
+          <br>
+          <div style="display:none;padding-left:16px"></div>
+          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/tree/clean_collapsed.png">
+          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/type/area.gif">
+          <span style="white-space:nowrap;margin-left:4px;vertical-align:top">Roof</span>
+          <br>
+          <div style="display:none;padding-left:16px"></div>
+        </div>
+        -->
+      </div>
+      <br><br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <br><br>
+      <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+      <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
+      <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
+      <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
+    </div>
+    <script>
+      var imgExpand = "/_common/lvl5/skin/graphics/tree/clean_expanded.png";
+      var imgCollapse = "/_common/lvl5/skin/graphics/tree/clean_collapsed.png";
+      var imgBlank = "/_common/lvl5/skin/graphics/type/blank.gif";
+      refresh();
+    </script>
+  </body>
+</html>

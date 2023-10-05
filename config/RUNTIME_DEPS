@@ -6,5 +6,7 @@ file:core:modules\core
 file:common:modules\common
 file:commonexceptions:modules\commonexceptions
 file:commonbaseutils:bin\lib
+file:directaccess:modules\directaccess
+file:directaccess-api:modules\directaccess
 url:postgresql:https://repo1.maven.org/maven2/org/postgresql/postgresql/42.6.0/postgresql-42.6.0-sources.jar
 url:jsch:https://repo1.maven.org/maven2/com/github/mwiede/jsch/0.2.11/jsch-0.2.11-sources.jar

@@ -55,7 +55,10 @@ public abstract class ServletBase extends HttpServlet {
   public static String getUsername(final HttpServletRequest req) throws Throwable {
     return DirectAccess.getDirectAccess().getUserSystemConnection(req).getOperator().getLoginName().toLowerCase();
   }
+  public static boolean checkWhitelist(final String username) throws Throwable {
+    return !Sync.lastGeneralSyncSuccessful || Sync.operatorWhitelist.contains(username);
+  }
   public boolean checkWhitelist(final HttpServletRequest req) throws Throwable {
-    return !Sync.lastGeneralSyncSuccessful || Sync.operatorWhitelist.contains(getUsername(req));
+    return checkWhitelist(getUsername(req));
   }
 }

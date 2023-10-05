@@ -13,7 +13,8 @@ import java.util.*;
  */
 public class MainPage extends ServletBase {
   @Override public void exec(final HttpServletRequest req, final HttpServletResponse res) throws Throwable {
-    if (!checkWhitelist(req)){
+    final String reqUsername = getUsername(req);
+    if (!checkWhitelist(reqUsername)){
       res.sendError(403, "Insufficient permissions.");
       return;
     }
@@ -70,6 +71,17 @@ public class MainPage extends ServletBase {
           }
           res.setContentType("text/plain");
           res.getWriter().print(success?"1":"0");
+          break;
+        }
+        case "toggleDev":{
+          try{
+            final boolean dev = HelperAPI.toggleDevMode(reqUsername);
+            res.setContentType("text/plain");
+            res.getWriter().print(dev?"1":"0");
+          }catch(Throwable t){
+            Initializer.log(t);
+            res.sendError(500, "Error occurred while toggling developing mode.");
+          }
           break;
         }
         case "downloadSQL":{

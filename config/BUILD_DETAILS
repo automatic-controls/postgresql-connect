@@ -19,6 +19,8 @@ commonbaseutils-2.0.3
 commonexceptions-8.5.002
 core-8.5.002
 datatable-8.5.002
+directaccess-8.5.002
+directaccess-api-8.5.002
 extensionsupport-api-8.5.002
 jsch-0.2.11-sources
 postgresql-42.6.0-sources

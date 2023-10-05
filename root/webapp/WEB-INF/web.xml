@@ -55,6 +55,15 @@
     <url-pattern>/LocalOperators</url-pattern>
   </servlet-mapping>
 
+  <servlet>
+    <servlet-name>FindTrendsPage</servlet-name>
+    <servlet-class>aces.webctrl.postgresql.web.FindTrendsPage</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>FindTrendsPage</servlet-name>
+    <url-pattern>/FindTrends</url-pattern>
+  </servlet-mapping>
+
   <security-constraint>
     <web-resource-collection>
       <web-resource-name>WEB</web-resource-name>

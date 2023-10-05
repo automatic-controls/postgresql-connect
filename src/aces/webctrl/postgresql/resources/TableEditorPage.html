@@ -68,13 +68,13 @@
           }
           const instruct = [];
           {
-            instruct.push(data[0].length.toString()+';');
+            instruct.push(updateColumnLength.toString()+';');
             const rows = document.getElementById("tableBody").getElementsByTagName("TR");
             const newKeySet = new Set();
             const oldKeySubset = new Set();
             for (const x of rows){
               if (x.fields){
-                newKeySet.add(x.fields[0].value);
+                newKeySet.add(x.getFieldValue(0));
               }
             }
             for (var i=2;i<data.length;++i){
@@ -88,13 +88,18 @@
             }
             for (const x of rows){
               if (x.fields && x.hasChanged()){
-                if (oldKeySubset.has(x.fields[0].value)){
+                if (oldKeySubset.has(x.getFieldValue(0))){
                   instruct.push("U;");
                 }else{
                   instruct.push("C;");
                 }
+                if (readonlyKeys){
+                  instruct.push(enc(x.getFieldValue(0)));
+                }
                 for (const y of x.fields){
-                  instruct.push(enc(y.value));
+                  if (y){
+                    instruct.push(enc(y.value));
+                  }
                 }
               }
             }
@@ -193,14 +198,26 @@
             th.innerText = x;
             head.appendChild(th);
           }
+          const readonly = [];
           const regexp = [];
           {
             const regex = data[1];
+            readonlyKeys = regex[0].startsWith("<READONLY>");
+            updateColumnLength = readonlyKeys?1:0;
             for (const x of regex){
               if (x.length>0){
-                regexp.push(new RegExp(x, "gis"));
+                if (x.startsWith("<READONLY>")){
+                  regexp.push(undefined);
+                  readonly.push(x.substring(10));
+                }else{
+                  regexp.push(new RegExp(x, "gis"));
+                  readonly.push(undefined);
+                  ++updateColumnLength;
+                }
               }else{
                 regexp.push(undefined);
+                readonly.push(undefined);
+                ++updateColumnLength;
               }
             }
           }
@@ -210,7 +227,7 @@
             if (newRow){
               arg = [];
               for (var k=0;k<regexp.length;++k){
-                arg.push("");
+                arg.push(readonly[k] ?? "");
               }
             }
             const row = arg;
@@ -221,11 +238,14 @@
                 return true;
               }
               for (var k=0;k<row.length;++k){
-                if (row[k]!==tr.fields[k].value){
+                if (tr.fields[k] && row[k]!==tr.fields[k].value){
                   return true;
                 }
               }
               return false;
+            };
+            tr.getFieldValue = function(k){
+              return readonly[k]===undefined?tr.fields[k].value:row[k];
             };
             {
               const td = document.createElement("TD");
@@ -242,53 +262,58 @@
             }
             for (var j=0;j<row.length;++j){
               const td = document.createElement("TD");
-              const field = document.createElement("INPUT");
-              td.appendChild(field);
-              tr.fields.push(field);
-              field.className = "c";
-              field.setAttribute("type", "text");
-              field.setAttribute("value", row[j]);
-              const r = regexp[j];
-              if (r){
-                field.validate = function(){
-                  if (r.test(field.value)){
-                    field.style.backgroundColor = "darkgreen";
-                  }else{
-                    field.style.backgroundColor = "darkred";
-                  }
-                  r.lastIndex = 0;
-                };
-              }else if (j==0){
-                field.validate = function(){
-                  if (r){
+              if (readonly[j]===undefined){
+                const field = document.createElement("INPUT");
+                td.appendChild(field);
+                tr.fields.push(field);
+                field.className = "c";
+                field.setAttribute("type", "text");
+                field.setAttribute("value", row[j]);
+                const r = regexp[j];
+                if (r){
+                  field.validate = function(){
                     if (r.test(field.value)){
                       field.style.backgroundColor = "darkgreen";
                     }else{
                       field.style.backgroundColor = "darkred";
                     }
                     r.lastIndex = 0;
+                  };
+                }else if (j==0){
+                  field.validate = function(){
+                    if (r){
+                      if (r.test(field.value)){
+                        field.style.backgroundColor = "darkgreen";
+                      }else{
+                        field.style.backgroundColor = "darkred";
+                      }
+                      r.lastIndex = 0;
+                    }else{
+                      field.style.backgroundColor = "darkgreen";
+                    }
+                  };
+                }else{
+                  field.style.backgroundColor = "darkgreen";
+                }
+                if (field.validate){
+                  field.validate();
+                }
+                const J = j;
+                field.oninput = function(){
+                  resize(field);
+                  registerChange();
+                  if (J>0){
+                    if (field.validate){
+                      field.validate();
+                    }
                   }else{
-                    field.style.backgroundColor = "darkgreen";
+                    checkDuplicateKeys();
                   }
                 };
               }else{
-                field.style.backgroundColor = "darkgreen";
+                tr.fields.push(undefined);
+                td.innerText = row[j];
               }
-              if (field.validate){
-                field.validate();
-              }
-              const J = j;
-              field.oninput = function(){
-                resize(field);
-                registerChange();
-                if (J>0){
-                  if (field.validate){
-                    field.validate();
-                  }
-                }else{
-                  checkDuplicateKeys();
-                }
-              };
               tr.appendChild(td);
             }
             body.insertBefore(tr,createTR);
@@ -316,6 +341,9 @@
         }
       }
       function checkDuplicateKeys(){
+        if (readonlyKeys){
+          return;
+        }
         const rows = document.getElementById("tableBody").getElementsByTagName("TR");
         for (const x of rows){
           if (x.fields){
@@ -374,18 +402,22 @@
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
       <br><br>
       <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
       <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
       <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
+      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
       <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
       <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
     </div>
     <script>
       var data = undefined;
       var changes = false;
+      var readonlyKeys = false;
       var prompt = true;
+      var updateColumnLength = 0;
       mainTitle.innerText = "__TABLE_DISPLAY_NAME__";
       window.onbeforeunload = ()=>{
         if (prompt && changes){

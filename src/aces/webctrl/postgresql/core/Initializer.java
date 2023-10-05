@@ -1,8 +1,11 @@
 package aces.webctrl.postgresql.core;
 import java.nio.file.*;
+import java.sql.*;
 import javax.servlet.*;
+import java.util.*;
 import java.util.concurrent.*;
 import com.controlj.green.addonsupport.*;
+import com.controlj.green.addonsupport.access.*;
 import com.controlj.green.common.CJProduct;
 public class Initializer implements ServletContextListener {
   /** Name of the addon used for auto udpates */
@@ -45,6 +48,8 @@ public class Initializer implements ServletContextListener {
   private volatile static long nextSave = 0;
   /** Stores log messages before sending them to the database. */
   public final static ConcurrentLinkedQueue<LogMessage> logCache = new ConcurrentLinkedQueue<LogMessage>();
+  /** Root system connection to the database. */
+  private volatile static SystemConnection con = null;
   /**
    * Entry point of this add-on.
    */
@@ -119,13 +124,13 @@ public class Initializer implements ServletContextListener {
   @Override public void contextDestroyed(ServletContextEvent sce){
     stop = true;
     if (mainThread==null){
-      Config.save();
+      handleDestruction();
     }else{
       mainThread.interrupt();
       synchronized (syncNotifier){
         syncNotifier.notifyAll();
       }
-      Config.save();
+      handleDestruction();
       //Wait for the primary processing thread to terminate.
       while (true){
         try{
@@ -137,6 +142,23 @@ public class Initializer implements ServletContextListener {
     log("Execution terminated.");
     new Sync(Event.SHUTDOWN);
   }
+  private static void handleDestruction(){
+    Config.save();
+    // We deregister the PostgreSQL driver so that Tomcat does not complain
+    final ClassLoader cl = Thread.currentThread().getContextClassLoader();
+    final Enumeration<Driver> drivers = DriverManager.getDrivers();
+    Driver driver;
+    while (drivers.hasMoreElements()) {
+      driver = drivers.nextElement();
+      if (driver.getClass().getClassLoader()==cl) {
+        try{
+          DriverManager.deregisterDriver(driver);
+        }catch(Throwable t){
+          log(t);
+        }
+      }
+    }
+  }
   /**
    * Tells the processing thread to invoke a synchronization event ASAP.
    */
@@ -145,6 +167,15 @@ public class Initializer implements ServletContextListener {
     synchronized (syncNotifier){
       syncNotifier.notifyAll();
     }
+  }
+  /**
+   * @return the root system connection used by this application.
+   */
+  public static SystemConnection getConnection(){
+    if (con==null){
+      con = DirectAccess.getDirectAccess().getRootSystemConnection();
+    }
+    return con;
   }
   /**
    * @return the name of this application.

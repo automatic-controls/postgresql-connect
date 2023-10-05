@@ -14,7 +14,7 @@ ALTER EXTENSION pgcrypto SET SCHEMA webctrl;
 
 -- Table that records one row for each connected server
 CREATE TABLE webctrl.servers (
-  -- Unique id to identity each server
+  -- Unique id to identify each server
   "id" SERIAL PRIMARY KEY,
   -- Display name of the root of the geographic tree
   "name" TEXT,
@@ -86,46 +86,6 @@ CREATE TABLE webctrl.addons (
 );
 CREATE INDEX webctrl_addons_id ON webctrl.addons ("server_id" ASC);
 
--- Create a function that deletes data for non-existent servers
-CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
-  BEGIN
-    WITH "bad" AS (
-      SELECT "a"."server_id" FROM (
-        SELECT DISTINCT "server_id" FROM webctrl.operators
-      ) "a" LEFT JOIN webctrl.servers "b"
-      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
-    ) DELETE FROM webctrl.operators "a" USING "bad" "b"
-    WHERE "a"."server_id" = "b"."server_id";
-    WITH "bad" AS (
-      SELECT "a"."server_id" FROM (
-        SELECT DISTINCT "server_id" FROM webctrl.events
-      ) "a" LEFT JOIN webctrl.servers "b"
-      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
-    ) DELETE FROM webctrl.events "a" USING "bad" "b"
-    WHERE "a"."server_id" = "b"."server_id";
-    WITH "bad" AS (
-      SELECT "a"."server_id" FROM (
-        SELECT DISTINCT "server_id" FROM webctrl.log
-      ) "a" LEFT JOIN webctrl.servers "b"
-      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
-    ) DELETE FROM webctrl.log "a" USING "bad" "b"
-    WHERE "a"."server_id" = "b"."server_id";
-    WITH "bad" AS (
-      SELECT "a"."server_id" FROM (
-        SELECT DISTINCT "server_id" FROM webctrl.addons
-      ) "a" LEFT JOIN webctrl.servers "b"
-      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
-    ) DELETE FROM webctrl.addons "a" USING "bad" "b"
-    WHERE "a"."server_id" = "b"."server_id";
-    RETURN NULL;
-  END;
-$$ LANGUAGE plpgsql;
-
--- Invoke the webctrl_clean() function whenever a server is created or deleted
-CREATE TRIGGER trigger_clean_webctrl
-AFTER INSERT OR DELETE ON webctrl.servers
-FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_clean();
-
 -- Operators in this table are synchronized to each connected server
 CREATE TABLE webctrl.operator_whitelist (
   -- Username of the operator
@@ -147,6 +107,14 @@ CREATE TABLE webctrl.operator_whitelist (
 CREATE TABLE webctrl.operator_blacklist (
   -- Username of the operator
   "username" TEXT PRIMARY KEY
+);
+
+-- If a particular client login conflicts with the blacklist, add a row to this table
+CREATE TABLE webctrl.operator_blacklist_exceptions (
+  -- Corresponds to the id column of webctrl.servers
+  "server_id" INTEGER NOT NULL,
+  -- Username of the operator
+  "username" TEXT
 );
 
 -- Create a function which computes a password hash compatible with WebCTRL (salted Sha512)
@@ -213,6 +181,120 @@ CREATE TABLE webctrl.addon_blacklist (
   "max_webctrl_version" TEXT
 );
 
+-- Defines trend sources to collect data from
+CREATE TABLE webctrl.trend_mappings (
+  -- Unique id to identify each trend mapping
+  "id" SERIAL PRIMARY KEY,
+  -- Corresponds to the id column of webctrl.servers
+  "server_id" INTEGER NOT NULL,
+  -- User-friendly name to identity the trend mapping
+  "name" TEXT,
+  -- com.controlj.green.addonsupport.access.Location.getPersistentLookupString(true)
+  "persistent_identifier" TEXT,
+  -- How many days of historical data should be kept in the database
+  "retain_data" INTEGER
+);
+
+-- Where collected trend source data lives
+-- For data points, exactly one of the value columns will be non-null
+-- For holes, all value columns will be null, and time corresponds to the starting hole timestamp.
+-- The ending hole timestamp can be assumed to be the time of the next populated sample.
+-- If a populated data sample and a hole have the same timestamp, assume the hole occurs after the data sample.
+CREATE TABLE webctrl.trend_data (
+  -- Corresponds to the id column of webctrl.trend_mappings
+  "id" INTEGER NOT NULL,
+  -- When the trend data occurred
+  "time" TIMESTAMPTZ,
+  -- Used for digital trends
+  "booleanValue" BOOLEAN,
+  -- Used for equipment color trends
+  -- Stores an encoded RGB value
+  "intValue" INTEGER,
+  -- Used for analog trends
+  "doubleValue" DOUBLE PRECISION
+);
+CREATE INDEX webctrl_trend_data_id ON webctrl.trend_data ("id" ASC);
+CREATE INDEX webctrl_trend_data_time ON webctrl.trend_data ("time" DESC);
+
+-- Create a function that deletes data for non-existent servers
+CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
+  BEGIN
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.operators
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.operators "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.events
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.events "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.log
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.log "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.operator_blacklist_exceptions
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.operator_blacklist_exceptions "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.addons
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.addons "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.trend_mappings
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.trend_mappings "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    WITH "bad" AS (
+      SELECT "a"."id" FROM (
+        SELECT DISTINCT "id" FROM webctrl.trend_data
+      ) "a" LEFT JOIN webctrl.trend_mappings "b"
+      ON "a"."id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.trend_data "a" USING "bad" "b"
+    WHERE "a"."id" = "b"."id";
+  END;
+$$ LANGUAGE plpgsql;
+
+-- Create a function that deletes expired trend data
+CREATE OR REPLACE FUNCTION webctrl.webctrl_delete_expired_trends() RETURNS TRIGGER AS $$
+  BEGIN
+    WITH "thresh" AS (
+      SELECT
+        "id",
+        CURRENT_TIMESTAMP-make_interval(days=>"retain_data") AS "start"
+      FROM webctrl.trend_mappings
+    ) DELETE FROM webctrl.trend_data "a" USING "thresh" "b"
+    WHERE "a"."id" = "b"."id" AND "a"."time" < "b"."start";
+    RETURN NULL;
+  END;
+$$ LANGUAGE plpgsql;
+
+-- Invoke the webctrl_clean() function whenever a server is created or deleted
+CREATE TRIGGER trigger_clean_webctrl
+AFTER INSERT OR DELETE ON webctrl.servers
+FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_clean();
+
+-- Invoke the webctrl_delete_expired_trends() function whenever a trend mapping is created or deleted
+CREATE TRIGGER trigger_clean_webctrl_trends
+AFTER INSERT OR DELETE ON webctrl.trend_mappings
+FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_delete_expired_trends();
+
 -- Stores various settings
 CREATE TABLE webctrl.settings (
   "name" TEXT PRIMARY KEY,
@@ -222,7 +304,7 @@ CREATE TABLE webctrl.settings (
 -- Populate default values for webctrl.settings
 INSERT INTO webctrl.settings VALUES
   -- Version of PostgreSQL connector addon
-  ('version','0.4.3'),
+  ('version','0.4.4'),
   -- Whether debug mode is enabled (e.g, verbose log messages when true)
   ('debug','false'),
   -- Whether to auto-update the PostgreSQL connector addon
@@ -250,9 +332,13 @@ GRANT ALL ON webctrl.log TO webctrl;
 GRANT ALL ON webctrl.addons TO webctrl;
 GRANT ALL ON webctrl.operator_whitelist TO webctrl;
 GRANT ALL ON webctrl.operator_blacklist TO webctrl;
+GRANT ALL ON webctrl.operator_blacklist_exceptions TO webctrl;
 GRANT ALL ON webctrl.addon_whitelist TO webctrl;
 GRANT ALL ON webctrl.addon_blacklist TO webctrl;
 GRANT ALL ON webctrl.settings TO webctrl;
+GRANT ALL ON webctrl.trend_mappings TO webctrl;
+GRANT ALL ON webctrl.trend_mappings_id_seq TO webctrl;
+GRANT ALL ON webctrl.trend_data TO webctrl;
 --*/
 
 -- Use this query to drop all webctrl tables
@@ -260,10 +346,14 @@ GRANT ALL ON webctrl.settings TO webctrl;
 
 /* Use these queries to reset the server data tables
 DELETE FROM webctrl.servers;
+ALTER SEQUENCE webctrl.servers_id_seq RESTART;
 DELETE FROM webctrl.addons;
 DELETE FROM webctrl.events;
 DELETE FROM webctrl.log;
-ALTER SEQUENCE webctrl.servers_id_seq RESTART;
+DELETE FROM webctrl.operator_blacklist_exceptions;
+DELETE FROM webctrl.trend_mappings;
+ALTER SEQUENCE webctrl.trend_mappings_id_seq RESTART;
+DELETE FROM webctrl.trend_data;
 --*/
 
 -- Insert administrators from your WebCTRL server into webctrl.operator_whitelist

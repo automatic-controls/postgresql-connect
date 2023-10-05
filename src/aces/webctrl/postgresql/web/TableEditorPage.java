@@ -15,7 +15,7 @@ public class TableEditorPage extends ServletBase {
     }
     table = table.toLowerCase();
     final TableTemplate tbl = TableCache.tables.get(table);
-    if (tbl==null || table.equals("log")){
+    if (tbl==null || tbl.keyColumn==null){
       res.sendError(404, "Table not found.");
       return;
     }
@@ -37,7 +37,7 @@ public class TableEditorPage extends ServletBase {
         final StringBuilder sb = new StringBuilder(64);
         for (int i=1,j;i<size;++i){
           c = Character.toUpperCase(arr.get(i).charAt(0));
-          final String key = Utility.escapePostgreSQL(arr.get(++i));
+          final String key = tbl.conversion.apply(0,arr.get(++i));
           if (c=='D'){
             queries.add("DELETE FROM webctrl."+table+" WHERE \""+tbl.keyColumn+"\" = "+key+';');
             continue;
