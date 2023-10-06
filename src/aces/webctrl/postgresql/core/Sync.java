@@ -514,22 +514,16 @@ public class Sync {
                       "SELECT\n"+
                       "  \"x\".\"id\",\n"+
                       "  \"x\".\"persistent_identifier\",\n"+
+                      "  \"x\".\"field_access\",\n"+
                       "  GREATEST(\"y\".\"time\", CURRENT_TIMESTAMP-make_interval(days=>\"retain_data\")) AS \"start\"\n"+
                       "FROM (\n"+
                       "  SELECT * FROM webctrl.trend_mappings WHERE \"server_id\" = "+ID+"\n"+
                       ") \"x\" LEFT JOIN (\n"+
-                      "  SELECT\n"+
-                      "    \"x\".*\n"+
-                      "  FROM (\n"+
-                      "    SELECT DISTINCT ON (\"id\")\n"+
-                      "      \"id\",\n"+
-                      "      \"time\"\n"+
-                      "    FROM webctrl.trend_data\n"+
-                      "    ORDER BY \"id\" ASC, \"time\" DESC\n"+
-                      "  ) \"x\" INNER JOIN (\n"+
-                      "    SELECT \"id\" FROM webctrl.trend_mappings WHERE \"server_id\" = "+ID+"\n"+
-                      "  ) \"y\"\n"+
-                      "  ON \"x\".\"id\" = \"y\".\"id\"\n"+
+                      "  SELECT DISTINCT ON (\"id\")\n"+
+                      "    \"id\",\n"+
+                      "    \"time\"\n"+
+                      "  FROM webctrl.trend_data\n"+
+                      "  ORDER BY \"id\" ASC, \"time\" DESC\n"+
                       ") \"y\"\n"+
                       "ON \"x\".\"id\" = \"y\".\"id\";"
                     );
@@ -537,13 +531,14 @@ public class Sync {
                     TrendMapping tm;
                     OffsetDateTime t;
                     while (r.next()){
-                      t = r.getObject(3, OffsetDateTime.class);
+                      t = r.getObject(4, OffsetDateTime.class);
                       if (t==null){
                         continue;
                       }
                       tm = new TrendMapping();
                       tm.ID = r.getInt(1);
                       tm.persistentIdentifier = r.getString(2);
+                      tm.fieldAccess = r.getBoolean(3);
                       tm.start = java.util.Date.from(t.toInstant());
                       trends.add(tm);
                     }
@@ -570,7 +565,7 @@ public class Sync {
                       boolValues.x = null;
                       boolNulls.x = null;
                       try{
-                        sysCon.runReadAction(FieldAccessFactory.newFieldAccess(), new ReadAction(){
+                        sysCon.runReadAction(tm.fieldAccess?FieldAccessFactory.newFieldAccess():FieldAccessFactory.newDisabledFieldAccess(), new ReadAction(){
                           @Override public void execute(SystemAccess sys){
                             try{
                               Location loc = sys.getTree(SystemTree.Geographic).resolve(tm.persistentIdentifier);

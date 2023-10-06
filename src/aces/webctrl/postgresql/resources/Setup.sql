@@ -192,7 +192,9 @@ CREATE TABLE webctrl.trend_mappings (
   -- com.controlj.green.addonsupport.access.Location.getPersistentLookupString(true)
   "persistent_identifier" TEXT,
   -- How many days of historical data should be kept in the database
-  "retain_data" INTEGER
+  "retain_data" INTEGER,
+  -- Whether to collect field data from controllers
+  "field_access" BOOLEAN
 );
 
 -- Where collected trend source data lives
@@ -304,7 +306,7 @@ CREATE TABLE webctrl.settings (
 -- Populate default values for webctrl.settings
 INSERT INTO webctrl.settings VALUES
   -- Version of PostgreSQL connector addon
-  ('version','0.4.4'),
+  ('version','0.4.5'),
   -- Whether debug mode is enabled (e.g, verbose log messages when true)
   ('debug','false'),
   -- Whether to auto-update the PostgreSQL connector addon

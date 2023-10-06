@@ -124,13 +124,13 @@ public class Initializer implements ServletContextListener {
   @Override public void contextDestroyed(ServletContextEvent sce){
     stop = true;
     if (mainThread==null){
-      handleDestruction();
+      Config.save();
     }else{
       mainThread.interrupt();
       synchronized (syncNotifier){
         syncNotifier.notifyAll();
       }
-      handleDestruction();
+      Config.save();
       //Wait for the primary processing thread to terminate.
       while (true){
         try{
@@ -141,9 +141,6 @@ public class Initializer implements ServletContextListener {
     }
     log("Execution terminated.");
     new Sync(Event.SHUTDOWN);
-  }
-  private static void handleDestruction(){
-    Config.save();
     // We deregister the PostgreSQL driver so that Tomcat does not complain
     final ClassLoader cl = Thread.currentThread().getContextClassLoader();
     final Enumeration<Driver> drivers = DriverManager.getDrivers();

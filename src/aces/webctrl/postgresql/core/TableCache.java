@@ -130,7 +130,7 @@ public class TableCache {
       //trend_mappings
       x = new TableTemplate("trend_mappings", "Trend Mappings");
       x.keyColumn = "id";
-      x.otherColumns = "\"server_id\",\"name\",\"persistent_identifier\",\"retain_data\"";
+      x.otherColumns = "\"server_id\",\"name\",\"persistent_identifier\",\"retain_data\",\"field_access\"";
       x.query =
         "SELECT\n"+
         "  \"x\".\"id\",\n"+
@@ -139,6 +139,7 @@ public class TableCache {
         "  \"x\".\"name\",\n"+
         "  \"x\".\"persistent_identifier\",\n"+
         "  \"x\".\"retain_data\",\n"+
+        "  \"x\".\"field_access\",\n"+
         "  COALESCE(\"y\".\"sample_count\", 0) AS \"sample_count\",\n"+
         "  COALESCE(DATE_TRUNC('seconds', \"y\".\"first_sample\" AT TIME ZONE '"+timezone+"')::TEXT, 'N/A') AS \"first_sample\",\n"+
         "  COALESCE(DATE_TRUNC('seconds', \"y\".\"last_sample\" AT TIME ZONE '"+timezone+"')::TEXT, 'N/A') AS \"last_sample\"\n"+
@@ -158,14 +159,16 @@ public class TableCache {
         ") \"z\"\n"+
         "ON \"x\".\"server_id\" = \"z\".\"id\"\n"+
         "ORDER BY \"x\".\"server_id\";";
-      x.header = "[\"Trend ID\",\"Server ID\",\"Server Name\",\"Name\",\"Persistent Identifier\",\"Retain Data (Days)\",\"Sample Count\",\"First Sample\",\"Last Sample\"],"+
-        "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^.+$\",\"^.+$\",\"^\\\\d+$\",\"<READONLY>0\",\"<READONLY>N/A\",\"<READONLY>N/A\"]";
+      x.header = "[\"Trend ID\",\"Server ID\",\"Server Name\",\"Name\",\"Persistent Identifier\",\"Retain Data (Days)\",\"Field Access\",\"Sample Count\",\"First Sample\",\"Last Sample\"],"+
+        "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^.+$\",\"^.+$\",\"^\\\\d+$\",\"^true$|^false$\",\"<READONLY>0\",\"<READONLY>N/A\",\"<READONLY>N/A\"]";
       x.conversion = new BiFunction<Integer,String,String>(){
         @Override public String apply(Integer i, String s){
           if (i==0){
             return s.equalsIgnoreCase("N/A")?"DEFAULT":String.valueOf(Integer.parseInt(s));
           }else if (i==1 || i==4){
             return String.valueOf(Integer.parseInt(s));
+          }else if (i==5){
+            return s.equals("1") || s.equalsIgnoreCase("true") ? "TRUE":"FALSE";
           }else{
             return Utility.escapePostgreSQL(s);
           }
