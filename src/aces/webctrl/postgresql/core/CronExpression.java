@@ -31,6 +31,12 @@ public class CronExpression {
     }
   }
   /**
+   * Explicity sets the next scheduled instant.
+   */
+  public void setNext(long next){
+    this.next = next;
+  }
+  /**
    * Recomputes the next scheduled instant for this Cron expression.
    */
   public void reset(){
@@ -39,7 +45,12 @@ public class CronExpression {
       next = -1;
     }else{
       try{
-        next = gen.next(new Date()).getTime();
+        final long offset = Config.maxRandomOffset;
+        if (offset>0){
+          next = gen.next(new Date()).getTime()+(long)(offset*Math.random());
+        }else{
+          next = gen.next(new Date()).getTime();
+        }
       }catch(Throwable t){
         next = -1;
       }

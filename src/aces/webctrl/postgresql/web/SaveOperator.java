@@ -10,11 +10,13 @@ public class SaveOperator extends ServletBase {
     final String refname = req.getParameter("refname");
     String ret = "An error has occurred.";
     try{
-      if (username==null || refname==null){
+      if (!checkWhitelist(req)){
+        ret = "Insufficient permissions.";
+      }else if (username==null || refname==null){
         ret = "Username unspecified.";
       }else if (!Sync.lastGeneralSyncSuccessful){
         ret = "Disconnected from database.";
-      }else if (Sync.operatorWhitelist.contains(username)){
+      }else if (Sync.operatorWhitelist.containsKey(username)){
         final String reqUsername = getUsername(req);
         String reqRefname = null;
         try(

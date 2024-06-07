@@ -7,7 +7,7 @@ public class SystemMenuEditor implements SystemMenuProvider {
   @Override public void updateMenu(Operator op, Menu menu){
     try{
       final String username = op.getLoginName().toLowerCase();
-      if (Sync.lastGeneralSyncSuccessful && Sync.operatorWhitelist.contains(username)){
+      if (Sync.lastGeneralSyncSuccessful && Sync.operatorWhitelist.containsKey(username)){
         if (JS==null){
           try{
             JS = Utility.loadResourceAsString("aces/webctrl/postgresql/resources/SaveOperator.js").replace("__PREFIX__", Initializer.getPrefix());

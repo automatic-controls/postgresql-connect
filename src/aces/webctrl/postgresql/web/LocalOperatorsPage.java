@@ -14,7 +14,7 @@ public class LocalOperatorsPage extends ServletBase {
       OperatorLink link = new OperatorLink(true);
     ){
       for (CoreNode op:link.getOperators()){
-        if (!Sync.operatorWhitelist.contains(op.getAttribute(CoreNode.KEY).toLowerCase())){
+        if (!Sync.operatorWhitelist.containsKey(op.getAttribute(CoreNode.KEY).toLowerCase())){
           ops.add(new OperatorData(op));
         }
       }

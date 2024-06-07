@@ -2,15 +2,20 @@ package aces.webctrl.postgresql.web;
 import aces.webctrl.postgresql.core.*;
 import com.controlj.green.core.data.*;
 import javax.servlet.http.*;
+import javax.servlet.annotation.MultipartConfig;
 import java.io.*;
+import java.nio.*;
+import java.nio.channels.*;
+import java.nio.file.*;
 import java.util.*;
 /**
  * Details:
  * <p> Readonly Field: Initializer.status, Config.cron.getNextString("N/A"), Config.ID
- * <p> Editable Fields: Config.connectionURL, Config.username, Config.password, Config.cron.toString()
- * <p> Buttons: Save, Sync Now, Reset ID, Download Setup SQL
+ * <p> Editable Fields: Config.connectionURL, Config.username, Config.password, Config.cron.toString(), Config.keystorePassword
+ * <p> Buttons: Save, Sync Now, Reset ID, Test SFTP, Toggle Developer Mode, Download Setup SQL, Upload Client Keystore, Upload Root Certificate
  * <p> Link: Documentation
  */
+@MultipartConfig
 public class MainPage extends ServletBase {
   @Override public void exec(final HttpServletRequest req, final HttpServletResponse res) throws Throwable {
     final String reqUsername = getUsername(req);
@@ -26,6 +31,7 @@ public class MainPage extends ServletBase {
         .replace("__USERNAME__", Utility.escapeJS(Config.username))
         .replace("__ID__", String.valueOf(Config.ID))
         .replace("__CRON__", Utility.escapeJS(Config.cron.toString()))
+        .replace("__RANDOM_OFFSET__", String.valueOf(Config.maxRandomOffset))
         .replace("__CRON_DISPLAY__", Utility.escapeJS(Config.cron.getNextString("N/A")))
         .replace("__STATUS__", Utility.escapeJS(Initializer.status))
       );
@@ -35,22 +41,68 @@ public class MainPage extends ServletBase {
           final String connectionURL = Config.connectionURL;
           final String username = Config.username;
           final String password = Config.password;
+          final String keystorePassword = Config.keystorePassword;
           Config.connectionURL = Utility.coalesce(req.getParameter("connectionURL"), "");
           Config.username = Utility.coalesce(req.getParameter("username"), "");
-          final String p = Utility.coalesce(req.getParameter("password"), "");
-          if (!p.isEmpty()){
-            Config.password = p;
+          {
+            final String p = Utility.coalesce(req.getParameter("password"), "");
+            if (!p.isEmpty()){
+              Config.password = p;
+            }
+          }
+          {
+            final String p = Utility.coalesce(req.getParameter("keyPassword"), "");
+            if (!p.isEmpty()){
+              Config.keystorePassword = p;
+            }
+          }
+          try{
+            Config.maxRandomOffset = Long.parseLong(Utility.coalesce(req.getParameter("offset"),"0"));
+          }catch(NumberFormatException e){
+            Config.maxRandomOffset = 0;
           }
           Config.cron.set(Utility.coalesce(req.getParameter("cron"), ""));
           Config.save();
-          if (!connectionURL.equals(Config.connectionURL) || !username.equals(Config.username) || !password.equals(Config.password)){
+          if (!connectionURL.equals(Config.connectionURL) || !username.equals(Config.username) || !password.equals(Config.password) || !keystorePassword.equals(Config.keystorePassword)){
             Initializer.status = "Initialized";
+            if (!connectionURL.equals(Config.connectionURL)){
+              Sync.licenseSynced = false;
+            }
           }
           // Note - We do not "break" at the end of this case. Proceed to the refresh case.
         }
         case "refresh":{
           res.setContentType("text/plain");
           res.getWriter().print(Initializer.status+';'+Config.ID+';'+Config.cron.getNextString("N/A"));
+          break;
+        }
+        case "uploadCertificate": case "uploadKeystore":{
+          final boolean debug = "true".equalsIgnoreCase(Sync.settings.get("debug"));
+          final Part filePart = req.getPart("file");
+          if (filePart==null || filePart.getSize()>8388608){
+            if (debug){
+              Initializer.log(filePart==null?new NullPointerException("File upload is missing."):new OutOfMemoryError("File upload is too large."));
+            }
+            res.setStatus(400);
+            return;
+          }
+          ByteBuffer buf = ByteBuffer.allocate(8192);
+          boolean go = true;
+          try(
+            ReadableByteChannel in = Channels.newChannel(filePart.getInputStream());
+            FileChannel out = FileChannel.open(type.equals("uploadCertificate")?Initializer.pgsslroot:Initializer.pgsslkey, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE);        
+          ){
+            do {
+              do {
+                go = in.read(buf)!=-1;
+              } while (go && buf.hasRemaining());
+              buf.flip();
+              while (buf.hasRemaining()){
+                out.write(buf);
+              }
+              buf.clear();
+            } while (go);
+          }
           break;
         }
         case "syncNow":{
@@ -71,17 +123,6 @@ public class MainPage extends ServletBase {
           }
           res.setContentType("text/plain");
           res.getWriter().print(success?"1":"0");
-          break;
-        }
-        case "toggleDev":{
-          try{
-            final boolean dev = HelperAPI.toggleDevMode(reqUsername);
-            res.setContentType("text/plain");
-            res.getWriter().print(dev?"1":"0");
-          }catch(Throwable t){
-            Initializer.log(t);
-            res.sendError(500, "Error occurred while toggling developing mode.");
-          }
           break;
         }
         case "downloadSQL":{

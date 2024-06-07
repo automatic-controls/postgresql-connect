@@ -39,7 +39,11 @@ public class TableEditorPage extends ServletBase {
           c = Character.toUpperCase(arr.get(i).charAt(0));
           final String key = tbl.conversion.apply(0,arr.get(++i));
           if (c=='D'){
-            queries.add("DELETE FROM webctrl."+table+" WHERE \""+tbl.keyColumn+"\" = "+key+';');
+            if (tbl.singleServer){
+              queries.add("DELETE FROM webctrl."+table+" WHERE \""+tbl.keyColumn+"\" = "+key+" AND \"server_id\" = "+Config.ID+";");
+            }else{
+              queries.add("DELETE FROM webctrl."+table+" WHERE \""+tbl.keyColumn+"\" = "+key+';');
+            }
             continue;
           }else if (c!='C' && c!='U'){
             res.sendError(404, "Malformed data body.");
@@ -62,13 +66,26 @@ public class TableEditorPage extends ServletBase {
             }
           }
           if (c=='C'){
-            queries.add("INSERT INTO webctrl."+table+" VALUES ("+sb.toString()+");");
+            if (tbl.create){
+              if (tbl.singleServer){
+                queries.add("INSERT INTO webctrl."+table+" VALUES ("+Config.ID+","+sb.toString()+");");
+              }else{
+                queries.add("INSERT INTO webctrl."+table+" VALUES ("+sb.toString()+");");
+              }
+            }else{
+              res.sendError(404, "Malformed data body.");
+              return;
+            }
           }else{
             if (tbl.otherColumns==null){
               res.sendError(404, "Malformed data body.");
               return;
             }
-            queries.add("UPDATE webctrl."+table+" SET ("+tbl.otherColumns+") = ROW("+sb.toString()+") WHERE \""+tbl.keyColumn+"\" = "+key+';');
+            if (tbl.singleServer){
+              queries.add("UPDATE webctrl."+table+" SET ("+tbl.otherColumns+") = ROW("+sb.toString()+") WHERE \""+tbl.keyColumn+"\" = "+key+" AND \"server_id\" = "+Config.ID+";");
+            }else{
+              queries.add("UPDATE webctrl."+table+" SET ("+tbl.otherColumns+") = ROW("+sb.toString()+") WHERE \""+tbl.keyColumn+"\" = "+key+';');
+            }
           }
           sb.setLength(0);
         }
@@ -85,6 +102,7 @@ public class TableEditorPage extends ServletBase {
       res.getWriter().print(getHTML(req)
         .replace("__TABLE__", Utility.escapeJS(tbl.name))
         .replace("__TABLE_DISPLAY_NAME__", Utility.escapeJS(tbl.displayName))
+        .replace("__CREATE_ROWS__", String.valueOf(tbl.create))
       );
     }
   }

@@ -4,7 +4,7 @@ import java.util.function.*;
 import java.time.*;
 public class TableCache {
   public final static HashMap<String,TableTemplate> tables = new HashMap<String,TableTemplate>();
-  static {
+  public static void init(){
     final BiFunction<Integer,String,String> basic = new BiFunction<Integer,String,String>(){
       @Override public String apply(Integer i, String s){
         return Utility.escapePostgreSQL(s);
@@ -21,29 +21,38 @@ public class TableCache {
     }
     TableTemplate x;
     {
-      //addon_blacklist
-      x = new TableTemplate("addon_blacklist", "Add-On Blacklist");
-      x.keyColumn = "name";
-      x.otherColumns = "\"min_webctrl_version\",\"max_webctrl_version\"";
-      x.query = "SELECT * FROM webctrl.addon_blacklist ORDER BY \"name\";";
+      //servers
+      x = new TableTemplate("servers", "Servers");
+      x.keyColumn = "id";
+      x.otherColumns = "\"name\",\"notes\"";
+      x.query = "SELECT \"id\", \"name\", \"version\", \"addon_version\", host(\"ip_address\"), "+
+        "'background-color:'|| CASE WHEN \"last_sync\"+(INTERVAL '1 days')>CURRENT_TIMESTAMP THEN 'darkgreen' ELSE 'darkred' END ||'|'||DATE_TRUNC('seconds', \"last_sync\" AT TIME ZONE '"+timezone+"')::TEXT, "+
+        "'<a target=\"_blank\" href=\""+Initializer.getPrefix()+"DownloadLicense?id='||\"id\"||'\" download=\"license-'||\"id\"||'.properties\">'||REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\"product_name\",'&','&amp;'),'\"','&quot;'),'''','&apos;'),'<','&lt;'),'>','&gt;')||'</a>', "+
+        "\"cum_updates\", \"notes\" FROM webctrl.servers ORDER BY STRING_TO_ARRAY(REGEXP_REPLACE(REPLACE(\"version\",'-','.'),'[^\\d\\.]','','g'), '.')::int[] DESC, \"name\" ASC;";
       x.conversion = basic;
       x.header = Utility.format(
-        "[\"Name\",\"Minimum WebCTRL Version\",\"Maximum WebCTRL Version\"],[\"$0\",\"$1\",\"$2\"]",
+        "[\"ID\",\"Name\",\"WebCTRL Version\",\"Add-On Version\",\"IP Address\",\"Last Sync\",\"License\",\"Cumulative Updates\",\"Notes\"],[\"Internal ID which uniquely identifies the server.\",\"User-friendly display name for the server.\",\"Full version string for the WebCTRL server.\",\"Installed version of the PostgreSQL_Connect add-on.\",\"External IP address of the server as viewed by the PostgreSQL database.\",\"Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green.\",\"Click to download the WebCTRL license.\",\"List of applied cumulative updates.\",\"Notes pertaining to this server.\"],[\"$0\",\"$1\",\"$2\",\"$3\",\"$4\",\"$5\",\"$6\",\"$7\",\"\"]",
+        "<READONLY>",
         "^.+$",
-        Utility.escapeJSON("^$|^\\d+(\\.\\d+)*$"),
-        Utility.escapeJSON("^$|^\\d+(\\.\\d+)*$")
+        "<READONLY>",
+        "<READONLY>",
+        "<READONLY>",
+        "<READONLY><STYLE>",
+        "<READONLY><HTML>",
+        "<READONLY>"
       );
+      x.create = false;
       tables.put(x.name,x);
     }
     {
-      //addon_whitelist
-      x = new TableTemplate("addon_whitelist", "Add-On Whitelist");
+      //addon_blacklist
+      x = new TableTemplate("addon_blacklist", "Add-On Blacklist");
       x.keyColumn = "name";
-      x.otherColumns = "\"version\",\"keep_newer\",\"download_path\",\"min_webctrl_version\",\"max_webctrl_version\",\"clear_data\"";
-      x.query = "SELECT * FROM webctrl.addon_whitelist ORDER BY \"name\";";
+      x.otherColumns = "\"min_webctrl_version\",\"max_webctrl_version\",\"clear_data\"";
+      x.query = "SELECT * FROM webctrl.addon_blacklist ORDER BY \"name\";";
       x.conversion = new BiFunction<Integer,String,String>(){
         @Override public String apply(Integer i, String s){
-          if (i==2 || i==6){
+          if (i==3){
             return s.equals("1") || s.equalsIgnoreCase("true") ? "TRUE":"FALSE";
           }else{
             return Utility.escapePostgreSQL(s);
@@ -51,13 +60,69 @@ public class TableCache {
         }
       };
       x.header = Utility.format(
-        "[\"Name\",\"Version\",\"Keep Newer\",\"Download Path\",\"Minimum WebCTRL Version\",\"Maximum WebCTRL Version\",\"Clear Data\"],[\"$0\",\"$1\",\"$2\",\"$3\",\"$4\",\"$5\",\"$6\"]",
+        "[\"Name\",\"Min. Version\",\"Max. Version\",\"Clear Data\"],[\"Reference name to uniquely identity the add-on.\",\"If the WebCTRL version is less than this value, the add-on will not be removed.\",\"If the WebCTRL version is greater than this value, the add-on will not be removed.\",\"Whether to delete data upon add-on removal.\"],[\"$0\",\"$1\",\"$2\",\"$3\"]",
+        "^.+$",
+        Utility.escapeJSON("^$|^\\d+(\\.\\d+)*$"),
+        Utility.escapeJSON("^$|^\\d+(\\.\\d+)*$"),
+        Utility.escapeJSON("^true$|^false$")
+      );
+      tables.put(x.name,x);
+    }
+    {
+      //addon_whitelist
+      x = new TableTemplate("addon_whitelist", "Add-On Whitelist");
+      x.keyColumn = "name";
+      x.otherColumns = "\"version\",\"keep_newer\",\"download_path\",\"min_webctrl_version\",\"max_webctrl_version\",\"clear_data\",\"optional\",\"description\"";
+      x.query = "SELECT\n"+
+        "  \"a\".\"name\",\n"+
+        "  \"a\".\"version\",\n"+
+        "  CASE\n"+
+        "    WHEN \"b\".\"download_path\" IS NOT NULL THEN '<button onclick=\"sendAJAX(this, ''InstallAddon'', ''Attempting install...'', 20000, '''||\"a\".\"download_path\"||''')\">Install</button>'\n"+
+        "    ELSE 'N/A'\n"+
+        "  END,\n"+
+        "  \"a\".\"keep_newer\",\n"+
+        "  \"a\".\"download_path\",\n"+
+        "  \"a\".\"min_webctrl_version\",\n"+
+        "  \"a\".\"max_webctrl_version\",\n"+
+        "  \"a\".\"clear_data\",\n"+
+        "  \"a\".\"optional\",\n"+
+        "  \"a\".\"description\"\n"+
+        "FROM webctrl.addon_whitelist \"a\" LEFT JOIN (\n"+
+        "  SELECT DISTINCT\n"+
+        "    \"a\".\"download_path\"\n"+
+        "  FROM (\n"+
+        "    SELECT\n"+
+        "      \"download_path\",\n"+
+        "      SUBSTRING(LOWER(\"download_path\") from '[/\\\\]([^/\\\\]+)\\.addon$') AS \"name\"\n"+
+        "    FROM webctrl.addon_whitelist\n"+
+        "    WHERE \"optional\"\n"+
+        "  ) \"a\" LEFT JOIN (\n"+
+        "    SELECT LOWER(\"name\") AS \"name\" FROM webctrl.addons\n"+
+        "    WHERE \"server_id\" = 1\n"+
+        "  ) \"b\"\n"+
+        "  ON \"a\".\"name\" = \"b\".\"name\"\n"+
+        "  WHERE \"b\".\"name\" IS NULL\n"+
+        ") \"b\"\n"+
+        "ON \"a\".\"download_path\" = \"b\".\"download_path\"\n"+
+        "ORDER BY \"a\".\"name\";";
+      x.conversion = new BiFunction<Integer,String,String>(){
+        @Override public String apply(Integer i, String s){
+          if (i==2 || i==6 || i==7){
+            return s.equals("1") || s.equalsIgnoreCase("true") ? "TRUE":"FALSE";
+          }else{
+            return Utility.escapePostgreSQL(s);
+          }
+        }
+      };
+      x.header = Utility.format(
+        "[\"Name\",\"Version\",\"Install\",\"Keep Newer\",\"Download Path\",\"Min Version\",\"Max Version\",\"Clear Data\",\"Optional\",\"Description\"],[\"Display name for the add-on.\",\"Version of the add-on stored on the FTP server. Please strip non-numeric characters out of the version string before inserting it here. For example, 'v0.1.0-beta' should turn into '0.1.0'.\",\"Click to install this optional add-on.\",\"Whether to allow newer versions of the add-on to be installed. If 'false', then newer versions will be downgraded.\",\"FTP server path used to download the add-on. For example: '/webctrl/addons/test.addon'\",\"If the WebCTRL version is less than this value, the add-on will not be installed.\",\"If the WebCTRL version is greater than this value, the add-on will not be installed.\",\"Whether to delete data upon add-on removal.\",\"If 'true', existing add-on installions will be upgraded to the version stored here, but the add-on will not be installed on servers that do not already have it.\",\"Descriptive details for this add-on.\"],[\"$0\",\"$1\",\"<READONLY><HTML>\",\"$2\",\"$3\",\"$4\",\"$5\",\"$6\",\"$7\",\"\"]",
         "^.+$",
         Utility.escapeJSON("^\\d+(\\.\\d+)*$"),
         Utility.escapeJSON("^true$|^false$"),
-        "^.+$",
+        Utility.escapeJSON("^[^\\\\&<>'\"]+$"),
         Utility.escapeJSON("^$|^\\d+(\\.\\d+)*$"),
         Utility.escapeJSON("^$|^\\d+(\\.\\d+)*$"),
+        Utility.escapeJSON("^true$|^false$"),
         Utility.escapeJSON("^true$|^false$")
       );
       tables.put(x.name,x);
@@ -76,8 +141,18 @@ public class TableCache {
         "  GROUP BY \"username\"\n"+
         ") \"y\" ON \"x\".\"username\" = \"y\".\"username\"\n"+
         "ORDER BY \"x\".\"username\";";
-      x.header = "[\"Username\",\"Exceptions\"],[\"^.+$\",\"<READONLY>0\"]";
+      x.header = "[\"Username\",\"Exceptions\"],[\"The username to be blacklisted.\",\"Counts the number of WebCTRL servers which have an exception allowing an operator with this username to exist.\"],[\"^.+$\",\"<READONLY>0\"]";
       x.conversion = basic;
+      tables.put(x.name,x);
+    }
+    {
+      //operator_blacklist_exceptions
+      x = new TableTemplate("operator_blacklist_exceptions", "Operator Blacklist Exceptions");
+      x.keyColumn = "username";
+      x.query = "SELECT \"username\" FROM webctrl.operator_blacklist_exceptions WHERE \"server_id\" = $ID ORDER BY \"username\";";
+      x.header = "[\"Username\"],[\"Specifies a blacklisted username which should be allowed to exist on this WebCTRL server.\"],[\"^.+$\"]";
+      x.conversion = basic;
+      x.singleServer = true;
       tables.put(x.name,x);
     }
     {
@@ -87,7 +162,7 @@ public class TableCache {
       x.otherColumns = "\"display_name\",\"password\",\"lvl5_auto_logout\",\"lvl5_auto_collapse\"";
       x.query = "SELECT * FROM webctrl.operator_whitelist ORDER BY \"username\";";
       x.header = Utility.format(
-        "[\"Username\",\"Display Name\",\"Password\",\"Session Timeout (seconds)\",\"Auto-Collapse Trees\"],[\"$0\",\"$1\",\"$2\",\"$3\",\"$4\"]",
+        "[\"Username\",\"Display Name\",\"Password Hash\",\"Session Timeout\",\"Auto-Collapse Trees\"],[\"Username to uniquely identify this user.\",\"User-friendly display name.\",\"A password hash for the user. You can enter a plaintext password into this field, and it will be automatically hashed when you submit the form.\",\"Specifies how many seconds to wait before automatically logging this user out. 0 disables automatic logoff. -1 uses the system default.\",\"This pertains to the geographic and network trees. If 'true', previously expanded nodes will collapse when you try to expand an unrelated node. If 'false', you can have as many nodes expanded at the same time as you like.\"],[\"$0\",\"$1\",\"$2\",\"$3\",\"$4\"]",
         "^.+$","^.+$","",
         Utility.escapeJSON("^-1$|^\\d+$"),
         Utility.escapeJSON("^true$|^false$")
@@ -115,7 +190,7 @@ public class TableCache {
       x.keyColumn = "name";
       x.otherColumns = "\"value\"";
       x.query = "SELECT * FROM webctrl.settings ORDER BY \"name\";";
-      x.header = "[\"Key\",\"Value\"],[\"^.+$\",\"\"]";
+      x.header = "[\"Key\",\"Value\"],[\"\",\"\"],[\"^.+$\",\"\"]";
       x.conversion = basic;
       tables.put(x.name,x);
     }
@@ -159,7 +234,7 @@ public class TableCache {
         ") \"z\"\n"+
         "ON \"x\".\"server_id\" = \"z\".\"id\"\n"+
         "ORDER BY \"x\".\"server_id\";";
-      x.header = "[\"Trend ID\",\"Server ID\",\"Server Name\",\"Name\",\"Persistent Identifier\",\"Retain Data (Days)\",\"Field Access\",\"Sample Count\",\"First Sample\",\"Last Sample\"],"+
+      x.header = "[\"Trend ID\",\"Server ID\",\"Server Name\",\"Name\",\"Persistent Identifier\",\"Retain Data\",\"Field Access\",\"Sample Count\",\"First Sample\",\"Last Sample\"],[\"Unique identifier for this trend mapping.\",\"Unique identifier for the WebCTRL server.\",\"User-friendly name of the WebCTRL server.\",\"User-friendly name to identity the trend mapping.\",\"Unique identifier for the microblock value to be trended. Use the 'Find Trends' page to retrieve this.\",\"Specifies how many days of historical data should be kept in the database.\",\"Whether to use field access when gathering trend data. If field access is disabled, then data collection will be faster, but it may not include the most up-to-date samples available.\",\"Number of samples stored in the database.\",\"Timestamp of the oldest sample.\",\"Timestamp of the most recent sample.\"],"+
         "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^.+$\",\"^.+$\",\"^\\\\d+$\",\"^true$|^false$\",\"<READONLY>0\",\"<READONLY>N/A\",\"<READONLY>N/A\"]";
       x.conversion = new BiFunction<Integer,String,String>(){
         @Override public String apply(Integer i, String s){

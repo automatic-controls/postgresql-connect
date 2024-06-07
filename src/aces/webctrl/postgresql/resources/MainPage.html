@@ -48,6 +48,22 @@
         hiddenSpan.innerText = input.value;
         input.style.width = hiddenSpan.offsetWidth+"px";
       }
+      function validateInt(field,max){
+        var s = field.value;
+        if (s.length>0){
+          s = s.replaceAll(/\D/g,"");
+          if (s.length>0){
+            if (s.length>15){
+              s = s.substring(0,15);
+            }
+            s = parseInt(s);
+            s = Math.min(s,max);
+            field.value = s.toString();
+          }else{
+            field.value = "";
+          }
+        }
+      }
       function syncNow(){
         if (checkSave()){
           syncButton.disabled = true;
@@ -115,26 +131,6 @@
           req.send();
         }
       }
-      function toggleDev(){
-        devButton.disabled = true;
-        const req = new XMLHttpRequest();
-        req.open("POST","__PREFIX__/index?type=toggleDev");
-        req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
-        req.timeout = 8000;
-        req.onreadystatechange = function(){
-          if (this.readyState===4){
-            if (this.status===200){
-              statusBox.innerText = "Developer mode "+(this.responseText=="1"?"en":"dis")+"abled";
-            }else if (this.status==0){
-              statusBox.innerText = "Request timed out.";
-            }else{
-              statusBox.innerText = "HTTP Error "+this.status;
-            }
-            devButton.disabled = false;
-          }
-        };
-        req.send();
-      }
       function save(){
         saveButton.disabled = true;
         const req = new XMLHttpRequest();
@@ -146,6 +142,9 @@
             if (this.status===200){
               parseRefresh(this.responseText);
               passwordField.value = "";
+              keyPasswordField.value = "";
+              resize(passwordField);
+              resize(keyPasswordField);
               unregisterChange();
             }else if (this.status==0){
               statusBox.innerText = "Request timed out.";
@@ -159,7 +158,9 @@
           "connectionURL="+encodeURIComponent(connectionURLField.value)+
           "&username="+encodeURIComponent(usernameField.value)+
           "&password="+encodeURIComponent(passwordField.value)+
-          "&cron="+encodeURIComponent(cronField.value)
+          "&cron="+encodeURIComponent(cronField.value)+
+          "&offset="+encodeURIComponent(offsetField.value)+
+          "&keyPassword="+encodeURIComponent(keyPasswordField.value)
         );
       }
       function refresh(){
@@ -193,18 +194,76 @@
           statusBox.innerText = "Invalid Response";
         }
       }
+      function uploadKeystore(){
+        if (!submittingFile && keystoreField.value.length>0){
+          if (keystoreField.files[0].size>8388608){
+            keystoreField.value = null;
+            alert("Selected file size has exceeded the 8MB limit.");
+            return;
+          }
+          submittingFile = true;
+          const formData = new FormData();
+          formData.append("file",keystoreField.files[0]);
+          keystoreField.value = null;
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/index?type=uploadKeystore");
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                statusBox.innerText = "Upload successful.";
+              }else if (this.status==0){
+                statusBox.innerText = "Request timed out.";
+              }else{
+                statusBox.innerText = "HTTP Error "+this.status;
+              }
+              submittingFile = false;
+            }
+          };
+          statusBox.innerText = "Uploading keystore...";
+          req.send(formData);
+        }
+      }
+      function uploadCertificate(){
+        if (!submittingFile && certificateField.value.length>0){
+          if (certificateField.files[0].size>8388608){
+            certificateField.value = null;
+            alert("Selected file size has exceeded the 8MB limit.");
+            return;
+          }
+          submittingFile = true;
+          const formData = new FormData();
+          formData.append("file",certificateField.files[0]);
+          certificateField.value = null;
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/index?type=uploadCertificate");
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                statusBox.innerText = "Upload successful.";
+              }else if (this.status==0){
+                statusBox.innerText = "Request timed out.";
+              }else{
+                statusBox.innerText = "HTTP Error "+this.status;
+              }
+              submittingFile = false;
+            }
+          };
+          statusBox.innerText = "Uploading certificate...";
+          req.send(formData);
+        }
+      }
     </script>
   </head>
   <body>
     <div style="text-align:center">
       <h1 id="mainTitle">PostgreSQL Connector</h1>
       <div class="divGrouping">
-        <label for="statusBox">Status:</label>
+        <label>Status:</label>
         <span id="statusBox" style="color:red">Retrieving...</span>
       </div>
       <br>
       <div class="divGrouping">
-        <label for="idBox">Server ID:</label>
+        <label>Server ID:</label>
         <span id="idBox"></span>
       </div>
       <br>
@@ -228,9 +287,25 @@
         <input class="c" type="text" id="cronField" oninput="resize(this);registerChange()">
       </div>
       <br>
+      <div class="divGrouping" title="A random number of milliseconds between 0 and the value entered here will be added to each scheduled synchronization time in an effort to stagger database connection attempts when multiple WebCTRL servers are using the same cron expression.">
+        <label for="offsetField">Random Max. Offset:</label>
+        <input class="c" type="text" id="offsetField" oninput="validateInt(this,31536000000);resize(this);registerChange()">
+        <span>ms</span>
+      </div>
+      <br>
       <div class="divGrouping">
-        <label for="cronBox">Next Sync Time:</label>
+        <label>Next Sync Time:</label>
         <span id="cronBox"></span>
+      </div>
+      <br>
+      <div class="divGrouping">
+        <button id="keystoreButton" class="e" onclick="keystoreField.click()" title="This JKS keystore should have exactly one alias, &quot;user&quot;. This alias should contain the private key and certificate used to authenticate this client to the PostgreSQL server.">Upload Client Keystore</button>
+        <button id="certificateButton" class="e" onclick="certificateField.click()" title="This PEM encoded X509v3 certificate should contain the root certificate for the trust chain to the PostgreSQL server's SSL certificate. This is used to authenticate the PostgreSQL server's identity.">Upload Root Certificate</button>
+      </div>
+      <br>
+      <div class="divGrouping">
+        <label for="keyPasswordField">Client Keystore Password:</label>
+        <input class="c" type="text" id="keyPasswordField" oninput="resize(this);registerChange()">
       </div>
       <br><br>
       <button class="e" id="saveButton" onclick="save()">Save Changes</button>
@@ -238,35 +313,42 @@
       <button class="e" id="syncButton" onclick="syncNow()">Sync Now</button>
       <button class="e" id="resetButton" onclick="resetNow()">Reset ID</button>
       <button class="e" id="sftpButton" onclick="testSFTP()">Test SFTP</button>
-      <button class="e" id="devButton" onclick="toggleDev()">Toggle Developer Mode</button>
       <a class="e" href="__PREFIX__/index?type=downloadSQL" download="Setup.sql" target="_blank">Download Setup SQL</a>
       <br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=servers">Server List</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist_exceptions">Operator Blacklist Exceptions</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
       <br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
+      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
       <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
       <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
-      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
       <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
-      <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+      <span id="hiddenSpan" style="min-width:3em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+      <input type="file" id="keystoreField" accept=".pfx,.p12,.jks" style="display:none" oninput="uploadKeystore()">
+      <input type="file" id="certificateField" accept=".pem,.cer,.crt" style="display:none" oninput="uploadCertificate()">
     </div>
     <script>
       var changes;
       var prompt = true;
+      var submittingFile = false;
       statusBox.innerText = "__STATUS__";
       idBox.innerText = "__ID__";
       connectionURLField.value = "__CONNECTION_URL__";
       usernameField.value = "__USERNAME__";
       cronField.value = "__CRON__";
+      offsetField.value = "__RANDOM_OFFSET__";
       cronBox.innerText = "__CRON_DISPLAY__";
       resize(connectionURLField);
       resize(usernameField);
       resize(passwordField);
+      resize(keyPasswordField);
       resize(cronField);
+      resize(offsetField);
       unregisterChange();
       window.onbeforeunload = ()=>{
         if (prompt && changes){

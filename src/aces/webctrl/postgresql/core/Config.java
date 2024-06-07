@@ -3,18 +3,22 @@ import java.nio.*;
 import java.nio.file.*;
 import java.nio.channels.*;
 public class Config {
-  private volatile static Path file = null;
+  public volatile static Path file = null;
   public volatile static String connectionURL = null;
   public volatile static String username = null;
   public volatile static String password = null;
+  public volatile static String keystorePassword = null;
   public volatile static int ID;
   public final static CronExpression cron = new CronExpression();
+  public volatile static long maxRandomOffset;
   static { revertDefaults(); }
   private static void revertDefaults(){
     ID = -1;
     connectionURL = "";
     username = "";
     password = "";
+    keystorePassword = "";
+    maxRandomOffset = 0L;
     cron.set("0 0 * * * *");
   }
   private Config(){}
@@ -29,9 +33,8 @@ public class Config {
       Sync.started = false;
     }
   }
-  public static boolean init(Path file){
+  public static void init(Path file){
     Config.file = file;
-    return load();
   }
   public static boolean load(){
     if (file==null){
@@ -46,11 +49,14 @@ public class Config {
         try{
           final SerializationStream s = new SerializationStream(arr);
           ID = s.readInt();
-          /*final String version =*/ s.readString();
+          //final String version = 
+            s.readString();
           connectionURL = s.readString();
           username = s.readString();
           password = s.readString();
+          maxRandomOffset = s.readLong();
           cron.set(s.readString());
+          keystorePassword = s.readString();
           if (!s.end()){
             Initializer.log("Configuration file corrupted. Parameters reverted to defaults.",true);
             revertDefaults();
@@ -80,6 +86,7 @@ public class Config {
       l+=username.length();
       l+=password.length();
       l+=cronExpr.length();
+      l+=keystorePassword.length();
       l<<=1;
       l+=4;
       final SerializationStream s = new SerializationStream(l, true);
@@ -88,7 +95,9 @@ public class Config {
       s.write(connectionURL);
       s.write(username);
       s.write(password);
+      s.write(maxRandomOffset);
       s.write(cronExpr);
+      s.write(keystorePassword);
       final ByteBuffer buf = s.getBuffer();
       synchronized(Config.class){
         try(

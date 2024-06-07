@@ -1,5 +1,7 @@
 package aces.webctrl.postgresql.core;
 import java.io.*;
+import java.nio.*;
+import java.nio.channels.*;
 import java.nio.file.*;
 import com.jcraft.jsch.*;
 public class ConnectSFTP implements AutoCloseable {
@@ -9,33 +11,44 @@ public class ConnectSFTP implements AutoCloseable {
     final String host = Sync.settings.get("ftp_host");
     final String port = Sync.settings.get("ftp_port");
     final String username = Sync.settings.get("ftp_username");
-    final String password = Sync.settings.get("ftp_password");
-    if (host==null || port==null || username==null || password==null){
+    final String key = Sync.settings.get("ftp_key");
+    if (host==null || port==null || username==null || key==null){
       Initializer.log("Failed to connect to SFTP server because connection settings were not provided.",true);
       return;
     }
     try{
-      connect(host, Integer.parseInt(port), username, password);
-    }catch(NumberFormatException e){
+      final ByteBuffer buf = ByteBuffer.wrap(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      synchronized(ConnectSFTP.class){
+        try(
+          FileChannel out = FileChannel.open(Initializer.sftpkey, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        ){
+          while (buf.hasRemaining()){
+            out.write(buf);
+          }
+        }
+      }
+      connect(host, Integer.parseInt(port), username);
+    }catch(Throwable e){
       Initializer.log(e);
       return;
     }
   }
-  public ConnectSFTP(String host, int port, String username, String password){
-    connect(host, port, username, password);
+  public ConnectSFTP(String host, int port, String username){
+    connect(host, port, username);
   }
-  private void connect(String host, int port, String username, String password){
+  private void connect(String host, int port, String username){
     try{
       final JSch jsch = new JSch();
       {
         final String knownHosts = Sync.settings.get("ftp_known_hosts");
         if (knownHosts==null){
+          Initializer.log("Failed to connect to SFTP server because ftp_known_hosts is undefined.",true);
           return;
         }
         jsch.setKnownHosts(new ByteArrayInputStream(knownHosts.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
       }
+      jsch.addIdentity(Initializer.sftpkey.toString());
       jschSession = jsch.getSession(username, host, port);
-      jschSession.setPassword(password);
       jschSession.setTimeout(10000);
       jschSession.setConfig("StrictHostKeyChecking", "yes");
       jschSession.connect(10000);
@@ -45,6 +58,42 @@ public class ConnectSFTP implements AutoCloseable {
       Initializer.log(t);
       close();
       return;
+    }
+  }
+  public boolean overwriteFile(InputStream src, String dst){
+    if (jschChannel==null){
+      return false;
+    }
+    try{
+      jschChannel.put(src, dst, new SftpProgressMonitor(){
+        @Override public void init(int op, String src, String dest, long max){}
+        @Override public boolean count(long count){
+          return !Initializer.stop;
+        }
+        @Override public void end(){}
+      }, ChannelSftp.OVERWRITE);
+      return !Initializer.stop;
+    }catch(Throwable t){
+      Initializer.log(t);
+      return false;
+    }
+  }
+  public boolean uploadFile(Path src, String dst){
+    if (jschChannel==null){
+      return false;
+    }
+    try{
+      try(
+        BufferedInputStream s = new BufferedInputStream(Files.newInputStream(src));
+      ){
+        if (overwriteFile(s, dst)){
+          return true;
+        }
+      }
+      return false;
+    }catch(Throwable t){
+      Initializer.log(t);
+      return false;
     }
   }
   public boolean retrieveFile(String path, OutputStream out){
@@ -76,7 +125,6 @@ public class ConnectSFTP implements AutoCloseable {
         if (retrieveFile(path,s)){
           return true;
         }
-        s.close();
       }
       Files.deleteIfExists(out);
       return false;

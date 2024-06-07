@@ -29,6 +29,24 @@
   </servlet-mapping>
 
   <servlet>
+    <servlet-name>InstallAddonPage</servlet-name>
+    <servlet-class>aces.webctrl.postgresql.web.InstallAddonPage</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>InstallAddonPage</servlet-name>
+    <url-pattern>/InstallAddon</url-pattern>
+  </servlet-mapping>
+
+  <servlet>
+    <servlet-name>DownloadLicensePage</servlet-name>
+    <servlet-class>aces.webctrl.postgresql.web.DownloadLicensePage</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>DownloadLicensePage</servlet-name>
+    <url-pattern>/DownloadLicense</url-pattern>
+  </servlet-mapping>
+
+  <servlet>
     <servlet-name>SaveOperator</servlet-name>
     <servlet-class>aces.webctrl.postgresql.web.SaveOperator</servlet-class>
   </servlet>

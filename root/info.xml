@@ -1,7 +1,7 @@
 <extension version="1">
   <name>PostgreSQL_Connect</name>
-  <description>Periodically synchronizes data to an external PostgreSQL database.</description>
-  <version>0.4.5</version>
+  <description>Periodically synchronizes operators, add-ons, and specified trends with an external PostgreSQL database.</description>
+  <version>0.5.4</version>
   <vendor>Automatic Controls Equipment Systems, Inc.</vendor>
   <system-menu-provider>aces.webctrl.postgresql.web.SystemMenuEditor</system-menu-provider>
 </extension>

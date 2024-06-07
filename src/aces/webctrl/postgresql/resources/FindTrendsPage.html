@@ -156,42 +156,24 @@
     <div style="text-align:center">
       <h1>Trend Browser</h1>
       <div class="divGrouping">
-        <label for="statusBox">Status:</label>
+        <label>Status:</label>
         <span id="statusBox"></span>
       </div>
       <br>
       <button class="e" onclick="refresh()">Refresh</button>
       <br><br>
-      <div id="mainDiv" style="display:inline-block;text-align:left;color:lightsteelblue">
-        <!--
-        <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/tree/clean_expanded.png">
-        <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/type/system.gif">
-        <span style="white-space:nowrap;margin-left:4px;vertical-align:top">Automatic Controls</span>
-        <br>
-        <div style="display:inline-block;padding-left:16px">
-          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/tree/clean_collapsed.png">
-          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/type/area.gif">
-          <span style="white-space:nowrap;margin-left:4px;vertical-align:top">Main Floor</span>
-          <span style="white-space:nowrap;margin-left:16px;vertical-align:top;color:turquoise;cursor:pointer" onclick="copy(this.innerText)">(DBID:2197)</span>
-          <br>
-          <div style="display:none;padding-left:16px"></div>
-          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/tree/clean_collapsed.png">
-          <img src="https://automaticcontrol.webctrl.automatedlogic.com/_common/lvl5/skin/graphics/type/area.gif">
-          <span style="white-space:nowrap;margin-left:4px;vertical-align:top">Roof</span>
-          <br>
-          <div style="display:none;padding-left:16px"></div>
-        </div>
-        -->
-      </div>
+      <div id="mainDiv" style="display:inline-block;text-align:left;color:lightsteelblue"></div>
       <br><br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=servers">Server List</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist_exceptions">Operator Blacklist Exceptions</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
       <br><br>
       <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
       <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
       <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
       <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>

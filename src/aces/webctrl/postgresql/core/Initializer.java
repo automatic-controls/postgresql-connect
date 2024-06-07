@@ -3,11 +3,16 @@ import java.nio.file.*;
 import java.sql.*;
 import javax.servlet.*;
 import java.util.*;
+import java.util.regex.*;
 import java.util.concurrent.*;
 import com.controlj.green.addonsupport.*;
 import com.controlj.green.addonsupport.access.*;
 import com.controlj.green.common.CJProduct;
+import com.controlj.green.common.CJProductDirectories;
+import com.controlj.green.update.*;
+import com.controlj.green.update.entries.*;
 public class Initializer implements ServletContextListener {
+  public final static boolean EMBEDDED_CONNECTION = true;
   /** Name of the addon used for auto udpates */
   public final static String AUTO_UPDATE_ADDON = "AutoUpdater";
   /** The version of this addon */
@@ -20,16 +25,26 @@ public class Initializer implements ServletContextListener {
   private volatile static String prefix;
   /** Path to the private directory for this addon */
   private volatile static Path root;
+  /** Path to the root SSL certificate for the PostgreSQL database */
+  public volatile static Path pgsslroot;
+  /** Path to SSL key file for the PostgreSQL database */
+  public volatile static Path pgsslkey;
+  /** Path to the SSL key file to use for SFTP */
+  public volatile static Path sftpkey;
   /** Path to a temporary file used when downloading addons */
   public volatile static Path tmpAddonFile;
   /** Path to the directory containing addons */
   public volatile static Path addonsDir;
+  /** Path to the WebCTRL system license file */
+  public volatile static Path licenseFile = null;
   /** Contains the version of this WebCTRL server */
   public volatile static String version = null;
   /** Contains the truncated version of this WebCTRL server */
   public volatile static String simpleVersion = null;
   /** Contains the product.name of this WebCTRL server */
   public volatile static String productName = null;
+  /** Contains a list of applied cumulative updates */
+  public volatile static String cumUpdates = null;
   /** Logger for this addon */
   private volatile static FileLogger logger;
   /** Status message to display on the main page */
@@ -68,7 +83,67 @@ public class Initializer implements ServletContextListener {
     productName = CJProduct.getDistName();
     logger = info.getDateStampLogger();
     addonsDir = HelperAPI.getAddonsDirectory().toPath();
+    try{
+      licenseFile = CJProductDirectories.getProgramDataDir().toPath().resolve("licenses").resolve("license.properties");
+      if (!Files.exists(licenseFile)){
+        final Path p = CJProductDirectories.getPropertiesDir().toPath().resolve("license.properties");
+        if (Files.exists(p)){
+          licenseFile = p;
+        }
+      }
+    }catch(Throwable t){
+      try{
+        licenseFile = CJProductDirectories.getPropertiesDir().toPath().resolve("license.properties");
+      }catch(Throwable tt){
+        log(tt);
+      }
+    }
+    {
+      final StringBuilder sb = new StringBuilder(64);
+      try{
+        boolean first = true;
+        String s;
+        final UpdateManager mgr = UpdateManagerFactory.getSingletonInstance();
+        if (mgr.haveAnyUpdatesBeenApplied()){
+          final Pattern p = Pattern.compile("(?:-\\d++_)?+WS\\d++(\\.\\d++)++$", Pattern.CASE_INSENSITIVE);
+          for (UpdateInfo info: mgr.getUpdateInfo().getSortedUpdateInfoOfType(UpdateType.Patch)){
+            s = info.getFileName();
+            if (s.endsWith("umulative.update")){
+              if (first){
+                first = false;
+              }else{
+                sb.append(", ");
+              }
+              sb.append(p.matcher(s.replace("_Cumulative.update", "")).replaceAll(""));
+            }
+          }
+        }
+      }catch(Throwable t){
+        log(t);
+      }
+      cumUpdates = sb.toString();
+    }
     Config.init(root.resolve("config.dat"));
+    pgsslroot = root.resolve("pgsslroot.cer");
+    pgsslkey = root.resolve("pgsslkey.pfx");
+    sftpkey = root.resolve("id_rsa");
+    if (EMBEDDED_CONNECTION){
+      try{
+        if (!Files.exists(pgsslroot)){
+          Utility.extractResource("aces/webctrl/postgresql/resources/pgsslroot.cer", pgsslroot);
+        }
+        if (!Files.exists(pgsslkey)){
+          Utility.extractResource("aces/webctrl/postgresql/resources/pgsslkey.pfx", pgsslkey);
+        }
+        if (!Files.exists(Config.file)){
+          Utility.extractResource("aces/webctrl/postgresql/resources/config.dat", Config.file);
+        }
+      }catch(Throwable t){
+        log(t);
+      }
+    }
+    Config.load();
+    TableCache.init();
     try{
       Class.forName("org.postgresql.Driver");
     }catch(Throwable t){
@@ -83,7 +158,11 @@ public class Initializer implements ServletContextListener {
         }catch(Throwable t){
           log(t);
         }
+        try{
+          Thread.sleep(10000L);
+        }catch(Throwable t){}
         long time, x;
+        boolean b;
         while (!stop){
           try{
             while (!stop){
@@ -95,8 +174,13 @@ public class Initializer implements ServletContextListener {
               }
               if (syncNow || (x=Config.cron.getNext())!=-1 && time>=x){
                 HelperAPI.removeAddon(AUTO_UPDATE_ADDON, true);
+                b = Sync.lastGeneralSyncSuccessful;
                 new Sync(Event.GENERAL);
-                Config.cron.reset();
+                if (b && !Sync.lastGeneralSyncSuccessful){
+                  Config.cron.setNext(System.currentTimeMillis()+300000L);
+                }else{
+                  Config.cron.reset();
+                }
                 syncNow = false;
                 if (stop){ break; }
               }

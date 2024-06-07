@@ -1,8 +1,12 @@
 package aces.webctrl.postgresql.core;
 import com.controlj.green.core.data.*;
+
+import aces.webctrl.postgresql.web.DownloadLicensePage;
+
 import com.controlj.green.addonsupport.access.*;
 import com.controlj.green.addonsupport.access.trend.*;
 import com.controlj.green.addonsupport.access.aspect.*;
+import java.nio.file.*;
 import java.util.*;
 import java.sql.*;
 import java.time.*;
@@ -20,11 +24,13 @@ public class Sync {
   /** The display name of the root of the geographic tree */
   public volatile static String serverName = null;
   public volatile static boolean started = false;
-  public volatile static Set<String> operatorWhitelist = Collections.emptySet();
+  public volatile static Map<String,OperatorData> operatorWhitelist = Collections.emptyMap();
   public volatile static boolean lastGeneralSyncSuccessful = false;
   public static volatile boolean versionCompatible = false;
   public volatile boolean success = false;
   public volatile static boolean delayUpdate = false;
+  public volatile static boolean licenseSynced = false;
+  private volatile static boolean cleanedLogs = false;
   /** Stores a partial list of mappings from the operator reference name in the WebCTRL database to the operator username in the PostgreSQL database. */
   private final static HashMap<String,String> refusernameCache = new HashMap<String,String>();
   /**
@@ -45,7 +51,9 @@ public class Sync {
         connectionParams.setProperty("user", username);
         connectionParams.setProperty("password", password);
         connectionParams.setProperty("sslmode", "verify-full");
-        connectionParams.setProperty("sslfactory","org.postgresql.ssl.DefaultJavaSSLFactory");
+        connectionParams.setProperty("sslkey", Initializer.pgsslkey.toString());
+        connectionParams.setProperty("sslpassword", Config.keystorePassword);
+        connectionParams.setProperty("sslrootcert", Initializer.pgsslroot.toString());
         int ID = Config.ID;
         switch (event){
           case SHUTDOWN:{
@@ -88,6 +96,7 @@ public class Sync {
             if (ID==-1 || !started || args.length<=1){
               return;
             }
+            args[0] = args[0].replace("$ID", String.valueOf(ID));
             try(
               Connection con = DriverManager.getConnection(url, connectionParams);
             ){
@@ -99,8 +108,10 @@ public class Sync {
                 for (int i=1;i<args.length;++i){
                   if (Initializer.stop){ return; }
                   if (debug){
-                    if (args[i].startsWith("INSERT INTO webctrl.operator_whitelist") && !args[i].contains("{SSHA512}")){
-                      Initializer.log("INSERT INTO webctrl.operator_whitelist VALUES (***);");
+                    if (args[i].startsWith("INSERT INTO webctrl.operator_whitelist ") && !args[i].contains("{SSHA512}")){
+                      Initializer.log("INSERT INTO webctrl.operator_whitelist VALUES (**Sensitive Information**);");
+                    }else if (args[i].startsWith("UPDATE webctrl.operator_whitelist ") && !args[i].contains("{SSHA512}")){
+                      Initializer.log("UPDATE webctrl.operator_whitelist SET (**Sensitive Information**);");
                     }else{
                       Initializer.log(args[i]);
                     }
@@ -209,6 +220,27 @@ public class Sync {
               if (Initializer.stop){ return; }
             }
             Initializer.log("Attempting sync.");
+            // Gather local changes to operator_whitelist since last sync
+            final ArrayList<String> opUpdates = new ArrayList<String>(8);
+            if (!operatorWhitelist.isEmpty()){
+              OperatorData x,y;
+              try(
+                OperatorLink link = new OperatorLink(true);
+              ){
+                String opname;
+                for (CoreNode op:link.getOperators()){
+                  opname = op.getAttribute(CoreNode.KEY).toLowerCase();
+                  if ((x = operatorWhitelist.get(opname))!=null){
+                    y = new OperatorData(op,opname);
+                    if (!x.equals(y)){
+                      opUpdates.add(x.query(y));
+                      Initializer.log("Pushing local change in operator "+opname+" to database.");
+                    }
+                  }
+                  if (Initializer.stop){ return; }
+                }
+              }
+            }
             try(
               Connection con = DriverManager.getConnection(url, connectionParams);
             ){
@@ -278,13 +310,13 @@ public class Sync {
                 }else{
                   try(
                     PreparedStatement s = con.prepareStatement(
-                      "INSERT INTO webctrl.servers VALUES(?,?,?,?,inet_client_addr(),CURRENT_TIMESTAMP,?) ON CONFLICT (\"id\") DO UPDATE SET"+
-                      " \"name\" = EXCLUDED.\"name\""+
-                      ", \"addon_version\" = EXCLUDED.\"addon_version\""+
+                      "INSERT INTO webctrl.servers VALUES(?,?,?,?,inet_client_addr(),CURRENT_TIMESTAMP,?,?,'') ON CONFLICT (\"id\") DO UPDATE SET"+
+                      " \"addon_version\" = EXCLUDED.\"addon_version\""+
                       ", \"version\" = EXCLUDED.\"version\""+
                       ", \"ip_address\" = EXCLUDED.\"ip_address\""+
                       ", \"last_sync\" = EXCLUDED.\"last_sync\""+
-                      ", \"product_name\" = EXCLUDED.\"product_name\""
+                      ", \"product_name\" = EXCLUDED.\"product_name\""+
+                      ", \"cum_updates\" = EXCLUDED.\"cum_updates\""
                     );
                   ){
                     s.setInt(1,ID);
@@ -292,6 +324,7 @@ public class Sync {
                     s.setString(3,Initializer.version);
                     s.setString(4,Initializer.addonVersion);
                     s.setString(5,Initializer.productName);
+                    s.setString(6,Initializer.cumUpdates);
                     s.executeUpdate();
                   }
                   con.commit();
@@ -310,9 +343,24 @@ public class Sync {
                 // Update webctrl.log
                 syncLog(con,ID);
                 if (Initializer.stop){ return; }
+                // Push local operator_whitelist changes to database
                 // Delete operators in webctrl.operator_blacklist
                 // Create operators in webctrl.operator_whitelist
                 {
+                  if (!opUpdates.isEmpty()){
+                    try(
+                      Statement s = con.createStatement();
+                    ){
+                      for (String update: opUpdates){
+                        if (debug){
+                          Initializer.log(update);
+                        }
+                        s.executeUpdate(update);
+                        if (Initializer.stop){ return; }
+                      }
+                    }
+                    con.commit();
+                  }
                   final HashSet<String> blacklist = new HashSet<String>(32);
                   final HashMap<String,OperatorData> whitelist = new HashMap<String,OperatorData>(64);
                   OperatorData data;
@@ -345,7 +393,7 @@ public class Sync {
                   }
                   con.commit();
                   if (Initializer.stop){ return; }
-                  operatorWhitelist = new HashSet<String>(whitelist.keySet());
+                  operatorWhitelist = new HashMap<String,OperatorData>(whitelist);
                   final HashSet<String> deletedOps = new HashSet<String>(16);
                   try(
                     OperatorLink link = new OperatorLink(false);
@@ -408,7 +456,7 @@ public class Sync {
                 if (Initializer.stop){ return; }
                 // Remove add-ons in webctrl.addon_blacklist
                 {
-                  final HashSet<String> blacklist = new HashSet<String>();
+                  final HashMap<String,Boolean> blacklist = new HashMap<String,Boolean>();
                   String min,max,addon;
                   try(
                     Statement s = con.createStatement();
@@ -420,14 +468,16 @@ public class Sync {
                       if ((min==null || min.isEmpty() || Utility.compareVersions(Initializer.simpleVersion,min)>=0) && (max==null || max.isEmpty() || Utility.compareVersions(Initializer.simpleVersion,max)<=0)){
                         addon = r.getString(1);
                         if (addon!=null && !Initializer.getName().equalsIgnoreCase(addon)){
-                          blacklist.add(addon.toLowerCase());
+                          blacklist.put(addon.toLowerCase(), r.getBoolean(4));
                         }
                       }
                     }
                   }
                   con.commit();
-                  if (Initializer.stop){ return; }
-                  HelperAPI.removeAddons(blacklist,true);
+                  if (!blacklist.isEmpty()){
+                    if (Initializer.stop){ return; }
+                    HelperAPI.removeAddons(blacklist);
+                  }
                 }
                 if (Initializer.stop){ return; }
                 // Download add-ons in webctrl.addon_whitelist
@@ -446,19 +496,22 @@ public class Sync {
                         addon = r.getString(1);
                         if (addon!=null && !Initializer.getName().equalsIgnoreCase(addon)){
                           d = new AddonDownload();
-                          d.name = addon;
+                          d.displayName = addon;
                           d.version = r.getString(2);
                           d.keepNewer = r.getBoolean(3);
                           d.path = r.getString(4);
                           d.removeData = r.getBoolean(7);
+                          d.optional = r.getBoolean(8);
                           whitelist.add(d);
                         }
                       }
                     }
                   }
                   con.commit();
-                  if (Initializer.stop){ return; }
-                  HelperAPI.downloadAddons(whitelist);
+                  if (!whitelist.isEmpty()){
+                    if (Initializer.stop){ return; }
+                    HelperAPI.downloadAddons(whitelist);
+                  }
                 }
                 if (Initializer.stop){ return; }
                 // UPDATE webctrl.addons
@@ -713,10 +766,11 @@ public class Sync {
                       }
                     }
                   }
+                  int x;
                   try(
                     Statement s = con.createStatement();
                   ){
-                    int x = s.executeUpdate(
+                    x = s.executeUpdate(
                       "WITH \"thresh\" AS (\n"+
                       "  SELECT\n"+
                       "    \"id\",\n"+
@@ -725,19 +779,62 @@ public class Sync {
                       ") DELETE FROM webctrl.trend_data \"a\" USING \"thresh\" \"b\"\n"+
                       "WHERE \"a\".\"id\" = \"b\".\"id\" AND \"a\".\"time\" < \"b\".\"start\";"
                     );
-                    if (x>0 && debug){
-                      Initializer.log("Deleted "+x+" expired values from trend database.");
-                    }
+                  }
+                  if (x>0 && debug){
+                    Initializer.log("Deleted "+x+" expired values from trend database.");
                   }
                 }
                 con.commit();
                 syncLog(con,ID);
+                if (!cleanedLogs){
+                  if (Initializer.stop){ return; }
+                  String expiry = settings.get("log_expiration");
+                  if (expiry==null || !DownloadLicensePage.num.matcher(expiry).matches()){
+                    expiry = "14";
+                  }
+                  int x = 0;
+                  try(
+                    Statement s = con.createStatement();
+                  ){
+                    x+=s.executeUpdate(
+                      "DELETE FROM webctrl.log\n"+
+                      "WHERE \"time\"+(INTERVAL '"+expiry+" days')<CURRENT_TIMESTAMP;"
+                    );
+                    x+=s.executeUpdate(
+                      "DELETE FROM webctrl.events\n"+
+                      "WHERE \"time\"+(INTERVAL '"+expiry+" days')<CURRENT_TIMESTAMP;"
+                    );
+                  }
+                  if (x>0 && debug){
+                    Initializer.log("Deleted "+x+" expired logs and events from database.");
+                  }
+                  cleanedLogs = true;
+                }
               }finally{
                 con.rollback();
               }
             }
             Initializer.log("Sync successful.");
             Initializer.status = "Sync Successful";
+            if (!licenseSynced && Initializer.licenseFile!=null && ID>=0){
+              String dst = settings.get("license_directory");
+              if (dst!=null){
+                dst+="/license-"+ID+".properties";
+                try{
+                  if (Files.exists(Initializer.licenseFile)){
+                    try(
+                      final ConnectSFTP con = new ConnectSFTP();
+                    ){
+                      if (con.uploadFile(Initializer.licenseFile, dst)){
+                        licenseSynced = true;
+                      }
+                    }
+                  }
+                }catch(Throwable t){
+                  Initializer.log(t);
+                }
+              }
+            }
             break;
           }
         }
@@ -759,12 +856,13 @@ public class Sync {
   private int newServer(Connection con) throws Throwable {
     int ID = -1;
     try(
-      PreparedStatement s = con.prepareStatement("INSERT INTO webctrl.servers VALUES(DEFAULT,?,?,?,inet_client_addr(),CURRENT_TIMESTAMP,?) RETURNING \"id\";");
+      PreparedStatement s = con.prepareStatement("INSERT INTO webctrl.servers VALUES(DEFAULT,?,?,?,inet_client_addr(),CURRENT_TIMESTAMP,?,?,'') RETURNING \"id\";");
     ){
       s.setString(1,serverName);
       s.setString(2,Initializer.version);
       s.setString(3,Initializer.addonVersion);
       s.setString(4,Initializer.productName);
+      s.setString(5,Initializer.cumUpdates);
       try(
         ResultSet r = s.executeQuery();
       ){
@@ -832,7 +930,7 @@ public class Sync {
               break;
             }
             default:{
-              ss = r.getString(i+1);
+              ss = r.getString(i+1).replace("\r","");
             }
           }
           cache.data.add(ss);

@@ -1,32 +1,34 @@
 JDK Version:
-openjdk 19.0.1 2022-10-18
-OpenJDK Runtime Environment (build 19.0.1+10-21)
-OpenJDK 64-Bit Server VM (build 19.0.1+10-21, mixed mode, sharing)
+openjdk 21.0.2 2024-01-16
+OpenJDK Runtime Environment (build 21.0.2+13-58)
+OpenJDK 64-Bit Server VM (build 21.0.2+13-58, mixed mode, sharing)
 
 Compilation Flags:
---release 8
+--release 11
 
 Runtime Dependencies:
-addonsupport-api-addon-1.9.0
-alarmmanager-api-addon-1.9.0
-bacnet-api-core-1.10.002-20230209.1438r
-directaccess-api-addon-1.9.0
-tomcat-embed-core-9.0.68
-webaccess-api-addon-1.9.0
-xdatabase-api-addon-1.9.0
-common-8.5.002
-commonbaseutils-2.0.3
-commonexceptions-8.5.002
-core-8.5.002
-datatable-8.5.002
-directaccess-8.5.002
-directaccess-api-8.5.002
-extensionsupport-api-8.5.002
-jsch-0.2.11-sources
-postgresql-42.6.0-sources
-spring-context-5.2.22.RELEASE
-webserver-api-8.5.002
+addonsupport-api-addon-1.10.0
+alarmmanager-api-addon-1.10.0
+bacnet-api-core-1.10.007-20240227.1003r
+directaccess-api-addon-1.10.0
+tomcat-embed-core-9.0.87
+webaccess-api-addon-1.10.0
+xdatabase-api-addon-1.10.0
+cjupdate-1.2.4
+common-9.0.002
+commonbaseutils-2.0.5
+commonexceptions-9.0.002
+core-9.0.002
+datatable-9.0.002
+directaccess-9.0.002
+directaccess-api-9.0.002
+extensionsupport-api-9.0.002
+jsch-0.2.17-sources
+postgresql-42.7.3-sources
+spring-context-5.3.33
+update-api-9.0.002
+webserver-api-9.0.002
 
 Packaged Dependencies:
-jsch-0.2.11
-postgresql-42.6.0
+jsch-0.2.17
+postgresql-42.7.3

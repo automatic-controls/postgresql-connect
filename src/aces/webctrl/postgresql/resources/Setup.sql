@@ -1,9 +1,9 @@
 
--- This script should be compatible with PostgreSQL versions 11.18 and later.
+-- This script was tested on PostgreSQL 16.3
 -- The core function of this script is to create and setup the required WebCTRL tables in your database.
 
 -- Schema to contain all relevant tables
-CREATE SCHEMA webctrl;
+CREATE SCHEMA IF NOT EXISTS webctrl;
 
 -- Ensure plpgsql extension is installed
 CREATE EXTENSION IF NOT EXISTS plpgsql;
@@ -27,7 +27,11 @@ CREATE TABLE webctrl.servers (
   -- Timestamp which records the time of the latest synchronization
   "last_sync" TIMESTAMPTZ,
   -- The product name specified in the WebCTRL license file
-  "product_name" TEXT
+  "product_name" TEXT,
+  -- Latest cumulative updates
+  "cum_updates" TEXT,
+  -- Notes relevant to this server
+  "notes" TEXT
 );
 
 -- Table that records one row for each operator on each server
@@ -168,7 +172,11 @@ CREATE TABLE webctrl.addon_whitelist (
   -- Maximum WebCTRL version required for this addon
   "max_webctrl_version" TEXT,
   -- Whether to remove addon data during synchronization
-  "clear_data" BOOLEAN
+  "clear_data" BOOLEAN,
+  -- Whether this addon should be forcibly installed, or just updated when an older version already exists
+  "optional" BOOLEAN,
+  -- User-friendly descriptive details
+  "description" TEXT
 );
 
 -- Addons in this table are deleted from each connected server
@@ -178,7 +186,9 @@ CREATE TABLE webctrl.addon_blacklist (
   -- The addon will only be deleted from servers whose verison is at least this value
   "min_webctrl_version" TEXT,
   -- The addon will only be deleted from servers whose verison is at most this value
-  "max_webctrl_version" TEXT
+  "max_webctrl_version" TEXT,
+  -- Whether to remove addon data during deletion
+  "clear_data" BOOLEAN
 );
 
 -- Defines trend sources to collect data from
@@ -270,6 +280,7 @@ CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
       ON "a"."id" = "b"."id" WHERE "b"."id" IS NULL
     ) DELETE FROM webctrl.trend_data "a" USING "bad" "b"
     WHERE "a"."id" = "b"."id";
+    RETURN NULL;
   END;
 $$ LANGUAGE plpgsql;
 
@@ -306,21 +317,25 @@ CREATE TABLE webctrl.settings (
 -- Populate default values for webctrl.settings
 INSERT INTO webctrl.settings VALUES
   -- Version of PostgreSQL connector addon
-  ('version','0.4.5'),
+  ('version','0.5.4'),
   -- Whether debug mode is enabled (e.g, verbose log messages when true)
   ('debug','false'),
   -- Whether to auto-update the PostgreSQL connector addon
   ('auto_update','false'),
+  -- Specifies how many days logs should be kept, after which point they will be deleted
+  ('log_expiration','14'),
   -- Download path in the FTP server for the latest PostgreSQL connector addon
   ('download_path',NULL),
+  -- FTP server path to store WebCTRL license files
+  ('license_directory',NULL),
   -- Host name for the FTP server
   ('ftp_host',NULL),
   -- Port for the FTP server
   ('ftp_port',NULL),
   -- Username for the FTP server
   ('ftp_username',NULL),
-  -- Password for the FTP server
-  ('ftp_password',NULL),
+  -- SSL private key for the FTP server
+  ('ftp_key',NULL),
   -- Known hosts raw file contents for host key verification (e.g, output of ssh-keyscan command)
   ('ftp_known_hosts',NULL);
 

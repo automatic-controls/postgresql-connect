@@ -49,7 +49,42 @@
         hiddenSpan.style.paddingLeft = styles.paddingLeft;
         hiddenSpan.style.paddingRight = styles.paddingRight;
         hiddenSpan.innerText = input.value;
-        input.style.width = Math.min(1024,hiddenSpan.offsetWidth)+"px";
+        input.style.width = hiddenSpan.offsetWidth+"px";
+        if (input.tagName=="TEXTAREA"){
+          input.style.height = "1px";
+          input.style.height = input.scrollHeight+"px";
+        }
+      }
+      function sendAJAX(button, url, msg, timeout, param){
+        if (!button.disabled){
+          button.disabled = true;
+          if (msg){
+            setStatus("white",msg);
+          }
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/"+url);
+          req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+          req.timeout = timeout;
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                setStatus("green", this.responseText);
+              }else if (this.status==502){
+                setStatus("red", this.responseText);
+              }else if (this.status==0){
+                setStatus("red", "Request timed out.");
+              }else{
+                setStatus("red", "HTTP Error "+this.status);
+              }
+              button.disabled = false;
+            }
+          };
+          if (param){
+            req.send("param="+encodeURIComponent(param));
+          }else{
+            req.send();
+          }
+        }
       }
       function save(){
         const saveButton = document.getElementById("saveButton");
@@ -77,7 +112,7 @@
                 newKeySet.add(x.getFieldValue(0));
               }
             }
-            for (var i=2;i<data.length;++i){
+            for (var i=3;i<data.length;++i){
               const key = data[i][0];
               if (newKeySet.has(key)){
                 oldKeySubset.add(key);
@@ -90,15 +125,17 @@
               if (x.fields && x.hasChanged()){
                 if (oldKeySubset.has(x.getFieldValue(0))){
                   instruct.push("U;");
-                }else{
+                }else if (createRows){
                   instruct.push("C;");
+                }else{
+                  continue;
                 }
                 if (readonlyKeys){
                   instruct.push(enc(x.getFieldValue(0)));
                 }
                 for (const y of x.fields){
                   if (y){
-                    instruct.push(enc(y.value));
+                    instruct.push(enc(y.value.replaceAll('\r','')));
                   }
                 }
               }
@@ -187,36 +224,61 @@
         head.replaceChildren();
         if (data && data.length>1){
           const header = data[0];
+          const docs = data[1];
           const cols = header.length;
           {
             const th = document.createElement("TH");
             th.innerText = "Actions";
             head.appendChild(th);
           }
+          var i = 0;
           for (const x of header){
             const th = document.createElement("TH");
             th.innerText = x;
+            if (docs[i] && docs[i].length>0){
+              th.setAttribute("title", docs[i]);
+            }
             head.appendChild(th);
+            i = i+1;
           }
           const readonly = [];
           const regexp = [];
+          const html = [];
+          const customStyle = [];
           {
-            const regex = data[1];
+            const regex = data[2];
             readonlyKeys = regex[0].startsWith("<READONLY>");
             updateColumnLength = readonlyKeys?1:0;
             for (const x of regex){
               if (x.length>0){
                 if (x.startsWith("<READONLY>")){
                   regexp.push(undefined);
-                  readonly.push(x.substring(10));
+                  let y = x.substring(10);
+                  if (y.startsWith("<HTML>")){
+                    y = y.substring(6);
+                    html.push(true);
+                  }else{
+                    html.push(false);
+                  }
+                  if (y.startsWith("<STYLE>")){
+                    y = y.substring(7);
+                    customStyle.push(true);
+                  }else{
+                    customStyle.push(false);
+                  }
+                  readonly.push(y);
                 }else{
                   regexp.push(new RegExp(x, "gis"));
                   readonly.push(undefined);
+                  html.push(false);
+                  customStyle.push(false);
                   ++updateColumnLength;
                 }
               }else{
                 regexp.push(undefined);
                 readonly.push(undefined);
+                html.push(false);
+                customStyle.push(false);
                 ++updateColumnLength;
               }
             }
@@ -238,14 +300,14 @@
                 return true;
               }
               for (var k=0;k<row.length;++k){
-                if (tr.fields[k] && row[k]!==tr.fields[k].value){
+                if (tr.fields[k] && row[k]!==tr.fields[k].value.replaceAll('\r','')){
                   return true;
                 }
               }
               return false;
             };
             tr.getFieldValue = function(k){
-              return readonly[k]===undefined?tr.fields[k].value:row[k];
+              return readonly[k]===undefined?tr.fields[k].value.replaceAll('\r',''):row[k];
             };
             {
               const td = document.createElement("TD");
@@ -262,13 +324,21 @@
             }
             for (var j=0;j<row.length;++j){
               const td = document.createElement("TD");
+              if (docs[j] && docs[j].length>0){
+                td.setAttribute("title", docs[j]);
+              }
               if (readonly[j]===undefined){
-                const field = document.createElement("INPUT");
+                const field = document.createElement("TEXTAREA");
                 td.appendChild(field);
                 tr.fields.push(field);
-                field.className = "c";
-                field.setAttribute("type", "text");
-                field.setAttribute("value", row[j]);
+                field.setAttribute("wrap", "off");
+                field.setAttribute("spellcheck", "false");
+                field.setAttribute("autocomplete", "off");
+                field.setAttribute("autocorrect", "off");
+                field.setAttribute("autocapitalize", "off");
+                field.style.resize = "none";
+                field.value = row[j];
+                field.style.textAlign = field.value.indexOf('\n')>-1?"left":"center";
                 const r = regexp[j];
                 if (r){
                   field.validate = function(){
@@ -301,6 +371,7 @@
                 const J = j;
                 field.oninput = function(){
                   resize(field);
+                  field.style.textAlign = field.value.indexOf('\n')>-1?"left":"center";
                   registerChange();
                   if (J>0){
                     if (field.validate){
@@ -312,16 +383,30 @@
                 };
               }else{
                 tr.fields.push(undefined);
-                td.innerText = row[j];
+                let r = row[j];
+                if (customStyle[j]){
+                  const index = r.indexOf("|");
+                  td.setAttribute("style", r.substring(0,index));
+                  r = r.substring(index+1);
+                }
+                if (html[j]){
+                  td.innerHTML = r;
+                }else{
+                  td.innerText = r;
+                }
               }
               tr.appendChild(td);
             }
-            body.insertBefore(tr,createTR);
-            for (const x of tr.getElementsByTagName("INPUT")){
-            resize(x);
-          }
+            if (createRows){
+              body.insertBefore(tr,createTR);
+            }else{
+              body.appendChild(tr);
+            }
+            for (const x of tr.getElementsByTagName("TEXTAREA")){
+              resize(x);
+            }
           };
-          {
+          if (createRows){
             const createTD = document.createElement("TD");
             const but = document.createElement("BUTTON");
             but.innerText = "Create";
@@ -332,9 +417,9 @@
             };
             createTD.appendChild(but);
             createTR.appendChild(createTD);
+            body.appendChild(createTR);
           }
-          body.appendChild(createTR);
-          for (var i=2;i<data.length;++i){
+          for (var i=3;i<data.length;++i){
             addRow(data[i]);
           }
           checkDuplicateKeys();
@@ -368,7 +453,7 @@
         }
       }
       function isValid(){
-        for (const x of document.getElementById("tableBody").getElementsByTagName("INPUT")){
+        for (const x of document.getElementById("tableBody").getElementsByTagName("TEXTAREA")){
           if (x.style.backgroundColor!=="darkgreen"){
             return false;
           }
@@ -385,7 +470,7 @@
     <div style="text-align:center">
       <h1 id="mainTitle"></h1>
       <div class="divGrouping">
-        <label for="statusBox">Status:</label>
+        <label>Status:</label>
         <span id="statusBox"></span>
       </div>
       <br><br>
@@ -398,19 +483,21 @@
       <button class="e" id="discardButton" onclick="discard()">Discard Changes</button>
       <button class="e" id="refreshButton" onclick="refresh()">Refresh</button>
       <br><br>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=servers">Server List</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist_exceptions">Operator Blacklist Exceptions</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
       <br><br>
       <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
+      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
       <a class="e nav" href="__PREFIX__/LocalOperators">View Local Operators</a>
       <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
-      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
       <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
-      <span id="hiddenSpan" style="min-width:6em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+      <span id="hiddenSpan" style="min-width:3em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
     </div>
     <script>
       var data = undefined;
@@ -418,6 +505,7 @@
       var readonlyKeys = false;
       var prompt = true;
       var updateColumnLength = 0;
+      var createRows = __CREATE_ROWS__;
       mainTitle.innerText = "__TABLE_DISPLAY_NAME__";
       window.onbeforeunload = ()=>{
         if (prompt && changes){

@@ -28,24 +28,6 @@ public class HelperAPI {
     return false;
   }
   /**
-   * Toggles developer mode for all sessions corresponding to the given user.
-   * @return whether developer mode is enabled
-   */
-  public static boolean toggleDevMode(String username) throws Throwable {
-    boolean first = true;
-    boolean dev = false;
-    for (final UserSession session:UserSession.getAllUserSessions()){
-      if (username.equalsIgnoreCase(session.getOperator().getLoginName())){
-        if (first){
-          first = false;
-          dev = !session.getIsDeveloperEnabledFlag();
-        }
-        session.setIsDeveloper(dev);
-      }
-    }
-    return dev;
-  }
-  /**
    * @return a collection of all local WebCTRL operators where usernames are mapped to display names, or {@code null} if an error occurs.
    */
   public static Map<String,String> getLocalOperators(){
@@ -212,25 +194,25 @@ public class HelperAPI {
   }
   /**
    * Removes all addons in the given set of names.
-   * @param addonNames is the set of addon names to search for.
-   * @param removeData specifies whether to remove data associated with each add-on.
+   * @param addonNames is a map of addon names to search for where the boolean value represents whether to remove data.
    * @return {@code true} on success; {@code false} on failure.
    */
-  public static boolean removeAddons(Set<String> addonNames, boolean removeData){
+  public static boolean removeAddons(HashMap<String,Boolean> addonNames){
     try{
       TomcatServer server = TomcatServerSingleton.get();
       if (server==null){
         return false;
       }
       String s;
+      Boolean b;
       for (AddOn x:server.scanForAddOns()){
         if (x==null){
           continue;
         }
         s = x.getName();
-        if (s!=null && addonNames.contains(s.toLowerCase())){
+        if (s!=null && (b=addonNames.get(s.toLowerCase()))!=null){
           s+=" v"+x.getVersion();
-          server.removeAddOn(x, removeData);
+          server.removeAddOn(x, b);
           Initializer.log("Uninstalled "+s);
         }
       }
@@ -259,8 +241,8 @@ public class HelperAPI {
           }
           for (i=0;i<l;++i){
             y = whitelist.get(i);
-            if (y!=null && y.name.equalsIgnoreCase(x.getName())){
-              j = Utility.compareVersions(x.getVersion(),y.version);
+            if (y!=null && y.getReferenceName().equalsIgnoreCase(x.getName())){
+              j = y.version==null?0:Utility.compareVersions(x.getVersion(),y.version);
               if (j==0 || y.keepNewer && j>0){
                 whitelist.set(i,null);
                 final WebApp.State s = x.getState();
@@ -271,7 +253,7 @@ public class HelperAPI {
                     Thread.sleep(timeout);
                     server.deployAddOn(Initializer.addonsDir.resolve(x.getName()+".addon").toFile());
                   }
-                  Initializer.log("Enabled "+y.name+" v"+x.getVersion());
+                  Initializer.log("Enabled "+y.displayName+" v"+x.getVersion());
                 }
               }else{
                 y.addon = x;
@@ -280,11 +262,17 @@ public class HelperAPI {
             }
           }
         }
+        for (i=0;i<l;++i){
+          y = whitelist.get(i);
+          if (y!=null && y.optional && y.addon==null){
+            whitelist.set(i,null);
+          }
+        }
       }
       boolean exists = false;
       for (AddonDownload x:whitelist){
         if (x!=null){
-          x.file = Initializer.addonsDir.resolve(x.name+".addon");
+          x.file = Initializer.addonsDir.resolve(x.getReferenceName()+".addon");
           exists = true;
         }
       }
@@ -311,16 +299,21 @@ public class HelperAPI {
                   }
                   Files.move(Initializer.tmpAddonFile, x.file, StandardCopyOption.REPLACE_EXISTING);
                   Thread.sleep(timeout);
-                  if (!enableAddon(x.name)){
+                  if (!enableAddon(x.getReferenceName())){
                     Thread.sleep(timeout);
                     server.deployAddOn(x.file.toFile());
                   }
-                  Initializer.log("Installed "+x.name+" v"+x.version);
+                  if (x.version==null){
+                    Initializer.log((x.addon==null?"Installed ":"Updated ")+x.displayName);
+                  }else{
+                    Initializer.log((x.addon==null?"Installed ":"Updated ")+x.displayName+" v"+x.version);
+                  }
                 }catch(Throwable t){
                   ret = false;
                   Initializer.log(t);
                 }
               }else{
+                ret = false;
                 Initializer.log("Failed to download \""+x.path+"\" from FTP server.",true);
               }
             }
