@@ -98,7 +98,7 @@ public class TableCache {
         "    WHERE \"optional\"\n"+
         "  ) \"a\" LEFT JOIN (\n"+
         "    SELECT LOWER(\"name\") AS \"name\" FROM webctrl.addons\n"+
-        "    WHERE \"server_id\" = 1\n"+
+        "    WHERE \"server_id\" = $ID\n"+
         "  ) \"b\"\n"+
         "  ON \"a\".\"name\" = \"b\".\"name\"\n"+
         "  WHERE \"b\".\"name\" IS NULL\n"+

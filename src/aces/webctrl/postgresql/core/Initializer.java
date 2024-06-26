@@ -155,6 +155,10 @@ public class Initializer implements ServletContextListener {
           if (Files.exists(addonsDir.resolve(Initializer.AUTO_UPDATE_ADDON+".addon"))){
             Sync.delayUpdate = true;
           }
+          final Path certSigner = addonsDir.resolve("ACES.cer");
+          if (!Files.exists(certSigner)){
+            Utility.extractResource("aces/webctrl/postgresql/resources/ACES.cer", certSigner);
+          }
         }catch(Throwable t){
           log(t);
         }
