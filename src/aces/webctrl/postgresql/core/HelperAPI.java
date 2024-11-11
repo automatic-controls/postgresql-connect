@@ -245,15 +245,17 @@ public class HelperAPI {
               j = y.version==null?0:Utility.compareVersions(x.getVersion(),y.version);
               if (j==0 || y.keepNewer && j>0){
                 whitelist.set(i,null);
-                final WebApp.State s = x.getState();
-                if (s!=WebApp.State.RUNNING && s!=WebApp.State.STARTING && s!=WebApp.State.STARTUP_ERROR){
-                  try{
-                    server.enableAddOn(x);
-                  }catch(Throwable t){
-                    Thread.sleep(timeout);
-                    server.deployAddOn(Initializer.addonsDir.resolve(x.getName()+".addon").toFile());
+                if (!y.optional){
+                  final WebApp.State s = x.getState();
+                  if (s!=WebApp.State.RUNNING && s!=WebApp.State.STARTING && s!=WebApp.State.STARTUP_ERROR){
+                    try{
+                      server.enableAddOn(x);
+                    }catch(Throwable t){
+                      Thread.sleep(timeout);
+                      server.deployAddOn(Initializer.addonsDir.resolve(x.getName()+".addon").toFile());
+                    }
+                    Initializer.log("Enabled "+y.displayName+" v"+x.getVersion());
                   }
-                  Initializer.log("Enabled "+y.displayName+" v"+x.getVersion());
                 }
               }else{
                 y.addon = x;

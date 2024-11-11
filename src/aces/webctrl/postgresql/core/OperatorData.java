@@ -1,7 +1,7 @@
 package aces.webctrl.postgresql.core;
 import com.controlj.green.common.CJDataValueException;
 import com.controlj.green.core.data.*;
-public class OperatorData {
+public class OperatorData implements Comparable<OperatorData> {
   public volatile String username;
   public volatile String display_name;
   public volatile String password;
@@ -14,6 +14,9 @@ public class OperatorData {
   public OperatorData(CoreNode operator, String username) throws CoreNotFoundException {
     this.username = username;
     read(operator,false);
+  }
+  @Override public int compareTo(OperatorData d){
+    return username.compareTo(d.username);
   }
   public void read(CoreNode op) throws CoreNotFoundException {
     read(op,true);
@@ -28,14 +31,16 @@ public class OperatorData {
     lvl5_auto_collapse = pref.getChild("lvl5_auto_collapse").getBooleanAttribute(CoreNode.VALUE);
     lvl5_auto_logout = pref.getChild("lvl5_auto_logout").getIntAttribute(CoreNode.VALUE);
   }
-  public void write(OperatorLink link, CoreNode op) throws CoreNotFoundException, CoreDatabaseException, CJDataValueException {
+  public void write(OperatorLink link, CoreNode op, boolean admin) throws CoreNotFoundException, CoreDatabaseException, CJDataValueException {
     op.setAttribute(CoreNode.KEY, username);
     op.setAttribute(NodeAttribute.lookup(CoreNode.DISPLAY_NAME, "en", true), display_name);
     link.setRawPassword(op, password, false);
     final CoreNode pref = op.getChild("preferences");
     pref.getChild("lvl5_auto_collapse").setBooleanAttribute(CoreNode.VALUE, lvl5_auto_collapse);
     pref.getChild("lvl5_auto_logout").setIntAttribute(CoreNode.VALUE, lvl5_auto_logout);
-    link.assignAdminRole(op);
+    if (admin){
+      link.assignAdminRole(op);
+    }
   }
   @Override public boolean equals(Object obj){
     if (this==obj){

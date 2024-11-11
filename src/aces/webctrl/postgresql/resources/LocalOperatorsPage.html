@@ -10,21 +10,70 @@
       Local Operators
     </title>
     <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+    <script>
+      function prepareExport() {
+        if (exportButton.getAttribute("href").length===1) {
+          const ops = [];
+          for (const r of data){
+            ops.push({
+              "username":r[0],
+              "display_name":r[1],
+              "password":r[2],
+              "session_timeout":Number(r[3]),
+              "auto_collapse":Boolean(r[4])
+            });
+          }
+          exportButton.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(JSON.stringify(ops, undefined, 2)));
+        }
+      }
+      function uploadOperators(){
+        if (!submittingFile && fileField.value.length>0){
+          if (fileField.files[0].size>1048576){
+            fileField.value = null;
+            alert("Selected file size has exceeded the 1MB limit.");
+            return;
+          }
+          submittingFile = true;
+          const formData = new FormData();
+          formData.append("file",fileField.files[0]);
+          fileField.value = null;
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/LocalOperators?cmd=import");
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                location.reload();
+              }else if (this.status==0){
+                alert("Request timed out.");
+              }else{
+                alert("An error has occurred: "+this.status);
+              }
+              submittingFile = false;
+            }
+          };
+          req.send(formData);
+        }
+      }
+    </script>
   </head>
   <body>
     <div style="text-align:center">
       <h1 id="mainTitle">Local Operators</h1>
       <br>
-        <table>
-          <thead><tr>
-            <th>Username</th>
-            <th>Display Name</th>
-            <th>Password</th>
-            <th>Session Timeout (seconds)</th>
-            <th>Auto-Collapse Trees</th>
-          </tr></thead>
-          <tbody id="tableBody"></tbody>
-        </table>
+      <table>
+        <thead><tr>
+          <th>Username</th>
+          <th>Display Name</th>
+          <th>Password</th>
+          <th>Session Timeout (seconds)</th>
+          <th>Auto-Collapse Trees</th>
+        </tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <br>
+      <a class="e" id="exportButton" href="#" download="operators.json" onclick="prepareExport()">Export</a>
+      <button id="importButton" class="e" onclick="fileField.click()">Import</button>
+      <input type="file" id="fileField" accept=".json" style="display:none" oninput="uploadOperators();">
       <br><br>
       <a class="e nav" href="__PREFIX__/TableEditor?table=servers">Server List</a>
       <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
@@ -41,6 +90,7 @@
       <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
     </div>
     <script>
+      var submittingFile = false;
       const data = __OPERATORS__;
       const body = document.getElementById("tableBody");
       for (const r of data){

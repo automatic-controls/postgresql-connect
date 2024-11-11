@@ -2,6 +2,7 @@ package aces.webctrl.postgresql.core;
 import java.util.*;
 import java.time.*;
 import org.springframework.scheduling.support.*;
+@SuppressWarnings("deprecation") // CronSequenceGenerator is deprecated
 public class CronExpression {
   private volatile String expr = null;
   private volatile CronSequenceGenerator gen = null;

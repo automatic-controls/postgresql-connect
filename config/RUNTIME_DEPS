@@ -10,5 +10,3 @@ file:directaccess:modules\directaccess
 file:directaccess-api:modules\directaccess
 file:cjupdate:bin\lib
 file:update-api:modules\update
-url:postgresql:https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3-sources.jar
-url:jsch:https://repo1.maven.org/maven2/com/github/mwiede/jsch/0.2.17/jsch-0.2.17-sources.jar

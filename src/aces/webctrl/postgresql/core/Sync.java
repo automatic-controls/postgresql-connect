@@ -407,7 +407,7 @@ public class Sync {
                         deletedOps.add(opname);
                         Initializer.log("Deleted blacklisted operator: "+opname);
                       }else if ((data = whitelist.get(opname))!=null){
-                        data.write(link, op);
+                        data.write(link, op, true);
                         whitelist.remove(opname);
                       }
                     }
