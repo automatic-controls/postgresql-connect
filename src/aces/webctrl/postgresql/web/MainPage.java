@@ -77,7 +77,7 @@ public class MainPage extends ServletBase {
           break;
         }
         case "uploadCertificate": case "uploadKeystore":{
-          final boolean debug = "true".equalsIgnoreCase(Sync.settings.get("debug"));
+          final boolean debug = Initializer.debug();
           final Part filePart = req.getPart("file");
           if (filePart==null || filePart.getSize()>8388608){
             if (debug){
@@ -137,7 +137,7 @@ public class MainPage extends ServletBase {
           }
           final PrintWriter w = res.getWriter();
           if (err==null){
-            w.println(s);
+            w.println(s.replace("__VERSION__",Initializer.addonVersion));
             final StringBuilder sb = new StringBuilder(2048);
             try(
               OperatorLink link = new OperatorLink(true);

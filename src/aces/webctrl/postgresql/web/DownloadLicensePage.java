@@ -48,7 +48,7 @@ public class DownloadLicensePage extends ServletBase {
         }
       }
     }catch(Throwable t){
-      if ("true".equalsIgnoreCase(Sync.settings.get("debug"))){
+      if (Initializer.debug()){
         Initializer.log(t);
       }
       res.sendError(404, "An error has occurred. This could mean the license file does not exist, or the SFTP server is misconfigured.");

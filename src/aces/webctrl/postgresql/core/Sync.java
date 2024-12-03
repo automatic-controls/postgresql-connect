@@ -1,8 +1,6 @@
 package aces.webctrl.postgresql.core;
+import aces.webctrl.postgresql.web.*;
 import com.controlj.green.core.data.*;
-
-import aces.webctrl.postgresql.web.DownloadLicensePage;
-
 import com.controlj.green.addonsupport.access.*;
 import com.controlj.green.addonsupport.access.trend.*;
 import com.controlj.green.addonsupport.access.aspect.*;
@@ -40,8 +38,9 @@ public class Sync {
     synchronized (Sync.class){
       if (Initializer.stop && event!=Event.SHUTDOWN){ return; }
       try{
-        boolean debug = "true".equalsIgnoreCase(settings.get("debug"));
-        final String url = "jdbc:postgresql://"+Config.connectionURL;
+        boolean debug = Initializer.debug();
+        final String connUrl = Config.connectionURL;
+        final String url = "jdbc:postgresql://"+connUrl;
         final String username = Config.username;
         final String password = Config.password;
         if (url.length()<=18){
@@ -50,7 +49,7 @@ public class Sync {
         final Properties connectionParams = new Properties();
         connectionParams.setProperty("user", username);
         connectionParams.setProperty("password", password);
-        connectionParams.setProperty("sslmode", "verify-full");
+        connectionParams.setProperty("sslmode", connUrl.startsWith("localhost") || connUrl.startsWith("127.0.0.1")?"require":"verify-full");
         connectionParams.setProperty("sslkey", Initializer.pgsslkey.toString());
         connectionParams.setProperty("sslpassword", Config.keystorePassword);
         connectionParams.setProperty("sslrootcert", Initializer.pgsslroot.toString());
@@ -265,7 +264,7 @@ public class Sync {
                   }
                   con.commit();
                   settings = map;
-                  final boolean d = "true".equalsIgnoreCase(map.get("debug"));
+                  final boolean d = Initializer.debug();
                   if (d^debug){
                     debug = d;
                     Initializer.log("Debug mode "+(d?"en":"dis")+"abled.");

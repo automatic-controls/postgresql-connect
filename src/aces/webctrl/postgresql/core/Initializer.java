@@ -12,7 +12,8 @@ import com.controlj.green.common.CJProductDirectories;
 import com.controlj.green.update.*;
 import com.controlj.green.update.entries.*;
 public class Initializer implements ServletContextListener {
-  public final static boolean EMBEDDED_CONNECTION = true;
+  /** Leave this on when you want to have a preset configuration built-in to the add-on. */
+  private final static boolean EMBEDDED_CONNECTION = true;
   /** Name of the addon used for auto udpates */
   public final static String AUTO_UPDATE_ADDON = "AutoUpdater";
   /** The version of this addon */
@@ -43,7 +44,7 @@ public class Initializer implements ServletContextListener {
   public volatile static String simpleVersion = null;
   /** Contains the product.name of this WebCTRL server */
   public volatile static String productName = null;
-  /** Contains a list of applied cumulative updates */
+  /** Contains an identifier for the latest applied cumulative update */
   public volatile static String cumUpdates = null;
   /** Logger for this addon */
   private volatile static FileLogger logger;
@@ -99,29 +100,32 @@ public class Initializer implements ServletContextListener {
       }
     }
     {
-      final StringBuilder sb = new StringBuilder(64);
+      int x = -1;
       try{
-        boolean first = true;
         String s;
+        int y;
         final UpdateManager mgr = UpdateManagerFactory.getSingletonInstance();
         if (mgr.haveAnyUpdatesBeenApplied()){
           final Pattern p = Pattern.compile("(?:-\\d++_)?+WS\\d++(\\.\\d++)++$", Pattern.CASE_INSENSITIVE);
+          final Pattern p2 = Pattern.compile("\\D");
           for (UpdateInfo info: mgr.getUpdateInfo().getSortedUpdateInfoOfType(UpdateType.Patch)){
             s = info.getFileName();
-            if (s.endsWith("umulative.update")){
-              if (first){
-                first = false;
-              }else{
-                sb.append(", ");
-              }
-              sb.append(p.matcher(s.replace("_Cumulative.update", "")).replaceAll(""));
+            if (s.endsWith("_Cumulative.update")){
+              s = p.matcher(s.replace("_Cumulative.update", "")).replaceAll("");
+              s = p2.matcher(s).replaceAll("");
+              try{
+                y = Integer.parseInt(s);
+                if (y>x){
+                  x = y;
+                }
+              }catch(NumberFormatException e){}
             }
           }
         }
       }catch(Throwable t){
         log(t);
       }
-      cumUpdates = sb.toString();
+      cumUpdates = x==-1?"":String.valueOf(x);
     }
     Config.init(root.resolve("config.dat"));
     pgsslroot = root.resolve("pgsslroot.cer");
@@ -243,6 +247,12 @@ public class Initializer implements ServletContextListener {
         }
       }
     }
+  }
+  /**
+   * @return whether debug mode is enabled.
+   */
+  public static boolean debug(){
+    return "true".equalsIgnoreCase(Sync.settings.get("debug"));
   }
   /**
    * Tells the processing thread to invoke a synchronization event ASAP.

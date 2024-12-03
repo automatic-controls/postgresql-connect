@@ -66,7 +66,7 @@ public class FindTrendsPage extends ServletBase {
           }
         }catch(Throwable t){
           arr.clear();
-          if ("true".equalsIgnoreCase(Sync.settings.get("debug"))){
+          if (Initializer.debug()){
             Initializer.log(t);
           }
         }

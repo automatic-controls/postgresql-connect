@@ -345,8 +345,7 @@ public class HelperAPI {
       Thread.sleep(timeout);
       Files.move(Initializer.tmpAddonFile, Initializer.addonsDir.resolve(Initializer.getName()+".update"), StandardCopyOption.REPLACE_EXISTING);
       final Path addon = Initializer.addonsDir.resolve(Initializer.AUTO_UPDATE_ADDON+".addon");
-      Utility.extractResource("aces/webctrl/postgresql/resources/"+Initializer.AUTO_UPDATE_ADDON+".addon", addon);
-      if (!Files.exists(addon)){
+      if (!Utility.extractResource("aces/webctrl/postgresql/resources/"+Initializer.AUTO_UPDATE_ADDON+".addon", addon) || !Files.exists(addon)){
         return false;
       }
       Thread.sleep(timeout);

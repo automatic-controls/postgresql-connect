@@ -47,18 +47,26 @@ public class Utility {
   }
   /**
    * Writes all bytes from the specified resource to the output file.
+   * @return {@code true} on success, {@code false} when the resource cannot be found.
    */
-  public static void extractResource(String name, Path out) throws Throwable {
+  public static boolean extractResource(String name, Path out) throws Throwable {
     try(
       InputStream s = Utility.class.getClassLoader().getResourceAsStream(name);
-      OutputStream t = Files.newOutputStream(out);
     ){
-      int read;
-      byte[] buffer = new byte[8192];
-      while ((read = s.read(buffer, 0, 8192)) >= 0) {
-        t.write(buffer, 0, read);
+      if (s==null){
+        return false;
+      }
+      try(
+        OutputStream t = Files.newOutputStream(out);
+      ){
+        int read;
+        byte[] buffer = new byte[8192];
+        while ((read = s.read(buffer, 0, 8192)) >= 0) {
+          t.write(buffer, 0, read);
+        }
       }
     }
+    return true;
   }
   /**
    * This method is provided for compatibility with older JRE versions.

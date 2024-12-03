@@ -1,5 +1,5 @@
 
--- This script was tested on PostgreSQL 16.3
+-- This script was tested on PostgreSQL 17
 -- The core function of this script is to create and setup the required WebCTRL tables in your database.
 
 -- Schema to contain all relevant tables
@@ -317,7 +317,7 @@ CREATE TABLE webctrl.settings (
 -- Populate default values for webctrl.settings
 INSERT INTO webctrl.settings VALUES
   -- Version of PostgreSQL connector addon
-  ('version','0.5.6'),
+  ('version','__VERSION__'),
   -- Whether debug mode is enabled (e.g, verbose log messages when true)
   ('debug','false'),
   -- Whether to auto-update the PostgreSQL connector addon

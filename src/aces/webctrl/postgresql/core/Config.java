@@ -32,6 +32,7 @@ public class Config {
       Sync.versionCompatible = false;
       Sync.started = false;
     }
+    Initializer.log("Server ID has been reset.");
   }
   public static void init(Path file){
     Config.file = file;
@@ -107,6 +108,9 @@ public class Config {
             out.write(buf);
           }
         }
+      }
+      if (Initializer.debug()){
+        Initializer.log("Data file saved.");
       }
       return true;
     }catch(Throwable t){

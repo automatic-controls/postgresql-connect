@@ -28,9 +28,9 @@ update-api-9.0.002
 webserver-api-9.0.002
 
 Packaged Dependencies:
-jsch-0.2.17-sources
-jsch-0.2.17
+jsch-0.2.21-sources
+jsch-0.2.21
 json-20240303-sources
 json-20240303
-postgresql-42.7.3-sources
-postgresql-42.7.3
+postgresql-42.7.4-sources
+postgresql-42.7.4

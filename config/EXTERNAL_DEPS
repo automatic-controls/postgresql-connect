@@ -1,6 +1,6 @@
-url:postgresql-42.7.3.jar:https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar
-url:postgresql-42.7.3-sources.jar:https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3-sources.jar
-url:jsch-0.2.17.jar:https://repo1.maven.org/maven2/com/github/mwiede/jsch/0.2.17/jsch-0.2.17.jar
-url:jsch-0.2.17-sources.jar:https://repo1.maven.org/maven2/com/github/mwiede/jsch/0.2.17/jsch-0.2.17-sources.jar
+url:postgresql-42.7.4.jar:https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
+url:postgresql-42.7.4-sources.jar:https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4-sources.jar
+url:jsch-0.2.21.jar:https://repo1.maven.org/maven2/com/github/mwiede/jsch/0.2.21/jsch-0.2.21.jar
+url:jsch-0.2.21-sources.jar:https://repo1.maven.org/maven2/com/github/mwiede/jsch/0.2.21/jsch-0.2.21-sources.jar
 url:json-20240303.jar:https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 url:json-20240303-sources.jar:https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303-sources.jar

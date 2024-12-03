@@ -59,35 +59,37 @@
   <body>
     <div style="text-align:center">
       <h1 id="mainTitle">Local Operators</h1>
+      <div class="stickyBar">
+        <a class="e nav" href="__PREFIX__/TableEditor?table=servers">Server List</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist_exceptions">Operator Blacklist Exceptions</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
+        <br><br>
+        <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
+        <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
+        <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
+        <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
+        <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
+        <br><br>
+        <a class="e" id="exportButton" href="#" download="operators.json" onclick="prepareExport()">Export</a>
+        <button id="importButton" class="e" onclick="fileField.click()">Import</button>
+        <br><br>
+      </div>
       <br>
       <table>
         <thead><tr>
-          <th>Username</th>
-          <th>Display Name</th>
-          <th>Password</th>
-          <th>Session Timeout (seconds)</th>
-          <th>Auto-Collapse Trees</th>
+          <th id="th1" title="Username to uniquely identify this user.">Username</th>
+          <th id="th2" title="User-friendly display name.">Display Name</th>
+          <th id="th3" title="A password hash for the user.">Password Hash</th>
+          <th id="th4" title="Specifies how many seconds to wait before automatically logging this user out. 0 disables automatic logoff. -1 uses the system default.">Session Timeout</th>
+          <th id="th5" title="This pertains to the geographic and network trees. If 'true', previously expanded nodes will collapse when you try to expand an unrelated node. If 'false', you can have as many nodes expanded at the same time as you like.">Auto-Collapse Trees</th>
         </tr></thead>
         <tbody id="tableBody"></tbody>
       </table>
-      <br>
-      <a class="e" id="exportButton" href="#" download="operators.json" onclick="prepareExport()">Export</a>
-      <button id="importButton" class="e" onclick="fileField.click()">Import</button>
       <input type="file" id="fileField" accept=".json" style="display:none" oninput="uploadOperators();">
-      <br><br>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=servers">Server List</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_whitelist">Operator Whitelist</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist">Operator Blacklist</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=operator_blacklist_exceptions">Operator Blacklist Exceptions</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_whitelist">Add-On Whitelist</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=addon_blacklist">Add-On Blacklist</a>
-      <br><br>
-      <a class="e nav" href="__PREFIX__/index">Connection Parameters</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=settings">Settings</a>
-      <a class="e nav" href="__PREFIX__/TableEditor?table=trend_mappings">Trend Mappings</a>
-      <a class="e nav" href="__PREFIX__/FindTrends">Find Trends</a>
-      <a class="e nav" href="__PREFIX__/LogViewer">View Log</a>
-      <a class="e nav" href="__DOCUMENTATION__" target="_blank">Documentation</a>
     </div>
     <script>
       var submittingFile = false;
@@ -98,22 +100,27 @@
         const usernameTD = document.createElement("TD");
         usernameTD.className = "e c";
         usernameTD.innerText = r[0];
+        usernameTD.title = th1.title;
         body.appendChild(usernameTD);
         const displayNameTD = document.createElement("TD");
         displayNameTD.className = "e c";
         displayNameTD.innerText = r[1];
+        displayNameTD.title = th2.title;
         body.appendChild(displayNameTD);
         const passwordTD = document.createElement("TD");
         passwordTD.className = "e c";
         passwordTD.innerText = r[2];
+        passwordTD.title = th3.title;
         body.appendChild(passwordTD);
         const sessionTD = document.createElement("TD");
         sessionTD.className = "e c";
         sessionTD.innerText = r[3];
+        sessionTD.title = th4.title;
         body.appendChild(sessionTD);
         const collapseTD = document.createElement("TD");
         collapseTD.className = "e c";
         collapseTD.innerText = r[4];
+        collapseTD.title = th5.title;
         body.appendChild(collapseTD);
         body.appendChild(tr);
       }

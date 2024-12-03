@@ -72,6 +72,9 @@ public class ConnectSFTP implements AutoCloseable {
         }
         @Override public void end(){}
       }, ChannelSftp.OVERWRITE);
+      if (!Initializer.stop && Initializer.debug()){
+        Initializer.log("Uploaded file: "+dst);
+      }
       return !Initializer.stop;
     }catch(Throwable t){
       Initializer.log(t);
@@ -108,6 +111,9 @@ public class ConnectSFTP implements AutoCloseable {
         }
         @Override public void end(){}
       });
+      if (!Initializer.stop && Initializer.debug()){
+        Initializer.log("Downloaded file: "+path);
+      }
       return !Initializer.stop;
     }catch(Throwable t){
       Initializer.log(t);
