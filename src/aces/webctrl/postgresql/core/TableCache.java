@@ -210,7 +210,7 @@ public class TableCache {
         "SELECT\n"+
         "  \"x\".\"id\",\n"+
         "  \"x\".\"server_id\",\n"+
-        "  \"z\".\"name\" AS \"server_name\",\n"+
+        "  COALESCE(\"z\".\"name\", 'N/A') AS \"server_name\",\n"+
         "  \"x\".\"name\",\n"+
         "  \"x\".\"persistent_identifier\",\n"+
         "  \"x\".\"retain_data\",\n"+
@@ -249,6 +249,39 @@ public class TableCache {
           }
         }
       };
+      tables.put(x.name,x);
+    }
+    {
+      //pending_commands
+      x = new TableTemplate("pending_commands", "Pending Commands");
+      x.keyColumn = "id";
+      x.otherColumns = "\"server_id\",\"ordering\",\"command\"";
+      x.query =
+        "SELECT\n"+
+        "  \"x\".\"id\",\n"+
+        "  \"x\".\"server_id\",\n"+
+        "  COALESCE(\"y\".\"name\", 'N/A') AS \"server_name\",\n"+
+        "  \"x\".\"ordering\",\n"+
+        "  \"x\".\"command\"\n"+
+        "FROM webctrl.pending_commands \"x\"\n"+
+        "LEFT JOIN (\n"+
+        "  SELECT \"id\", \"name\" FROM webctrl.servers\n"+
+        ") \"y\"\n"+
+        "ON \"x\".\"server_id\" = \"y\".\"id\"\n"+
+        "ORDER BY \"x\".\"server_id\", \"x\".\"ordering\";";
+      x.conversion = new BiFunction<Integer,String,String>(){
+        @Override public String apply(Integer i, String s){
+          if (i==0){
+            return s.equalsIgnoreCase("N/A")?"DEFAULT":String.valueOf(Integer.parseInt(s));
+          }else if (i==2){
+            return String.valueOf(Integer.parseInt(s));
+          }else{
+            return Utility.escapePostgreSQL(s);
+          }
+        }
+      };
+      x.header = "[\"Command ID\",\"Server ID\",\"Server Name\",\"Ordering\",\"Command\"],[\"Unique identifier for this command.\",\"Unique identifier for the WebCTRL server.\",\"User-friendly name of the WebCTRL server.\",\"Commands are executed in the ascending order specified by this column.\",\"The command(s) to execute. Multiple commands can be separated by newlines for fail-fast semantics.\"],"+
+        "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^\\\\d+$\",\"^.+$\"]";
       tables.put(x.name,x);
     }
   }

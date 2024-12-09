@@ -10,3 +10,5 @@ file:directaccess:modules\directaccess
 file:directaccess-api:modules\directaccess
 file:cjupdate:bin\lib
 file:update-api:modules\update
+file:webui:webroot\WEB-INF\lib
+file:serviceframework:modules\serviceframework

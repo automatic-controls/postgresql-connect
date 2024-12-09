@@ -549,7 +549,7 @@ public class Sync {
                   con.commit();
                 }
                 if (Initializer.stop){ return; }
-                // UPDATE webctrl.events and webctrl.log
+                // UPDATE webctrl.events
                 try(
                   Statement s = con.createStatement();
                 ){
@@ -782,14 +782,51 @@ public class Sync {
                   if (x>0 && debug){
                     Initializer.log("Deleted "+x+" expired values from trend database.");
                   }
+                  con.commit();
                 }
-                con.commit();
-                syncLog(con,ID);
+                if (Initializer.stop){ return; }
+                // Execute pending commands
+                {
+                  final ArrayList<Command> commands = new ArrayList<Command>();
+                  try(
+                    Statement s = con.createStatement();
+                    ResultSet r = s.executeQuery("SELECT \"id\",\"command\" FROM webctrl.pending_commands WHERE \"server_id\" = "+ID+" ORDER BY \"ordering\" ASC;");
+                  ){
+                    Command c;
+                    while (r.next()){
+                      c = new Command(r.getInt(1), r.getString(2));
+                      if (!c.isEmpty()){
+                        commands.add(c);
+                        if (c.hasReboot()){
+                          break;
+                        }
+                      }
+                    }
+                  }catch(IndexOutOfBoundsException|NullPointerException t){
+                    commands.clear();
+                    Initializer.log(t);
+                  }
+                  if (commands.size()>0){
+                    try(
+                      PreparedStatement s = con.prepareStatement("DELETE FROM webctrl.pending_commands WHERE \"id\"=?;");
+                    ){
+                      for (Command c: commands){
+                        s.setInt(1,c.id);
+                        s.addBatch();
+                      }
+                      s.executeBatch();
+                    }
+                    con.commit();
+                    for (Command c: commands){
+                      c.execute();
+                    }
+                  }
+                }
                 if (!cleanedLogs){
                   if (Initializer.stop){ return; }
                   String expiry = settings.get("log_expiration");
                   if (expiry==null || !DownloadLicensePage.num.matcher(expiry).matches()){
-                    expiry = "14";
+                    expiry = "60";
                   }
                   int x = 0;
                   try(
@@ -808,7 +845,9 @@ public class Sync {
                     Initializer.log("Deleted "+x+" expired logs and events from database.");
                   }
                   cleanedLogs = true;
+                  con.commit();
                 }
+                syncLog(con,ID);
               }finally{
                 con.rollback();
               }

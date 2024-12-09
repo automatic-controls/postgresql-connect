@@ -141,6 +141,12 @@ public class OperatorLink implements AutoCloseable {
     return n;
   }
   /**
+   * @return the CoreDataSession used by this link.
+   */
+  public CoreDataSession getCoreDataSession(){
+    return cds;
+  }
+  /**
    * Commits changes to the underlying database.
    */
   public void commit(){

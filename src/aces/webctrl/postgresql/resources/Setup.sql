@@ -191,6 +191,19 @@ CREATE TABLE webctrl.addon_blacklist (
   "clear_data" BOOLEAN
 );
 
+-- Commands inserted into this table are executed once at the next sync interval
+CREATE TABLE webctrl.pending_commands (
+  -- Unique id to identify each command
+  "id" SERIAL PRIMARY KEY,
+  -- Corresponds to the id column of webctrl.servers
+  "server_id" INTEGER NOT NULL,
+  -- Commands are executed in the ascending order specified by this column
+  "ordering" INTEGER,
+  -- The command to execute
+  "command" TEXT
+);
+CREATE INDEX webctrl_pending_commands_ordering ON webctrl.pending_commands ("server_id" ASC, "ordering" ASC);
+
 -- Defines trend sources to collect data from
 CREATE TABLE webctrl.trend_mappings (
   -- Unique id to identify each trend mapping
@@ -230,6 +243,8 @@ CREATE INDEX webctrl_trend_data_time ON webctrl.trend_data ("time" DESC);
 
 -- Create a function that deletes data for non-existent servers
 CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
+  DECLARE
+    "rowcount" INTEGER;
   BEGIN
     WITH "bad" AS (
       SELECT "a"."server_id" FROM (
@@ -280,9 +295,29 @@ CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
       ON "a"."id" = "b"."id" WHERE "b"."id" IS NULL
     ) DELETE FROM webctrl.trend_data "a" USING "bad" "b"
     WHERE "a"."id" = "b"."id";
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.pending_commands
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.pending_commands "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    SELECT
+      COUNT(*) INTO "rowcount"
+    FROM (
+        SELECT * FROM webctrl.pending_commands LIMIT 1
+    ) "x";
+    IF "rowcount" = 0 THEN
+      ALTER SEQUENCE webctrl.pending_commands_id_seq RESTART;
+    END IF;
     RETURN NULL;
   END;
 $$ LANGUAGE plpgsql;
+
+-- Invoke the webctrl_clean() function whenever a server is created or deleted
+CREATE TRIGGER trigger_clean_webctrl
+AFTER INSERT OR DELETE ON webctrl.servers
+FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_clean();
 
 -- Create a function that deletes expired trend data
 CREATE OR REPLACE FUNCTION webctrl.webctrl_delete_expired_trends() RETURNS TRIGGER AS $$
@@ -298,15 +333,80 @@ CREATE OR REPLACE FUNCTION webctrl.webctrl_delete_expired_trends() RETURNS TRIGG
   END;
 $$ LANGUAGE plpgsql;
 
--- Invoke the webctrl_clean() function whenever a server is created or deleted
-CREATE TRIGGER trigger_clean_webctrl
-AFTER INSERT OR DELETE ON webctrl.servers
-FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_clean();
-
 -- Invoke the webctrl_delete_expired_trends() function whenever a trend mapping is created or deleted
 CREATE TRIGGER trigger_clean_webctrl_trends
 AFTER INSERT OR DELETE ON webctrl.trend_mappings
 FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_delete_expired_trends();
+
+-- Create a function that restarts the pending command sequence when appropriate
+CREATE OR REPLACE FUNCTION webctrl.webctrl_restart_pending_commands_seq() RETURNS TRIGGER AS $$
+  DECLARE
+    "rowcount" INTEGER;
+  BEGIN
+    SELECT
+      COUNT(*) INTO "rowcount"
+    FROM (
+        SELECT * FROM webctrl.pending_commands LIMIT 1
+    ) "x";
+    IF "rowcount" = 0 THEN
+      ALTER SEQUENCE webctrl.pending_commands_id_seq RESTART;
+    END IF;
+    RETURN NULL;
+  END;
+$$ LANGUAGE plpgsql;
+
+-- Invoke the webctrl_restart_pending_commands_seq() function whenever pending commands are deleted
+CREATE TRIGGER trigger_restart_pending_commands_seq_webctrl
+AFTER DELETE OR TRUNCATE ON webctrl.pending_commands
+FOR EACH STATEMENT EXECUTE FUNCTION webctrl.webctrl_restart_pending_commands_seq();
+
+-- Create a function that duplicates pending commands when necessary
+CREATE OR REPLACE FUNCTION webctrl.webctrl_duplicate_pending_commands() RETURNS TRIGGER AS $$
+  BEGIN
+    WITH "new_row" AS ( SELECT NEW.* )
+    INSERT INTO webctrl.pending_commands
+      ("server_id", "ordering", "command")
+    SELECT * FROM (
+      SELECT
+        "y"."id" AS "server_id",
+        "x"."ordering",
+        REGEXP_REPLACE("x"."command", '%ID%', "y"."id"::TEXT, 1, 0, 'i') AS "command"
+      FROM (
+        SELECT
+          "ordering",
+          REGEXP_SUBSTR("command", '^\s*duplicate\s*[\n\r](.*)$', 1, 1, 'i', 1) AS "command"
+        FROM "new_row" "x"
+        WHERE "command" ~* '^\s*duplicate\s*[\n\r]'
+      ) "x" CROSS JOIN (
+        SELECT DISTINCT "id" FROM webctrl.servers
+      ) "y"
+    ) UNION (
+      SELECT
+        "server_id"::INTEGER,
+        "x"."ordering",
+        REGEXP_REPLACE("x"."command", '%ID%', "server_id"::TEXT, 1, 0, 'i') AS "command"
+      FROM (
+        SELECT
+          "ordering",
+          REGEXP_SUBSTR("command", '^\s*duplicate\s*\d+(?:\s*,\s*\d+)*[\n\r](.*)$', 1, 1, 'i', 1) AS "command",
+          STRING_TO_ARRAY(REPLACE(REGEXP_SUBSTR("command", '^\s*duplicate\s*(\d+(?:\s*,\s*\d+)*)[\n\r](.*)$', 1, 1, 'i', 1),' ',''),',') AS "ids"
+        FROM "new_row" "x"
+        WHERE "command" ~* '^\s*duplicate\s*\d+(?:\s*,\s*\d+)*[\n\r]'
+      ) "x" CROSS JOIN LATERAL UNNEST("x"."ids") AS "server_id"
+    );
+    IF FOUND THEN
+      RETURN NULL;
+    END IF;
+    RETURN NEW;
+  END;
+$$ LANGUAGE plpgsql;
+
+-- Invoke the webctrl_duplicate_pending_commands() function whenever a pending command is created or updated
+CREATE OR REPLACE TRIGGER trigger_duplicate_pending_commands_webctrl
+BEFORE INSERT ON webctrl.pending_commands
+FOR EACH ROW
+WHEN (pg_trigger_depth()=0)
+EXECUTE FUNCTION webctrl.webctrl_duplicate_pending_commands();
 
 -- Stores various settings
 CREATE TABLE webctrl.settings (
@@ -323,7 +423,7 @@ INSERT INTO webctrl.settings VALUES
   -- Whether to auto-update the PostgreSQL connector addon
   ('auto_update','false'),
   -- Specifies how many days logs should be kept, after which point they will be deleted
-  ('log_expiration','14'),
+  ('log_expiration','60'),
   -- Download path in the FTP server for the latest PostgreSQL connector addon
   ('download_path',NULL),
   -- FTP server path to store WebCTRL license files
@@ -356,6 +456,9 @@ GRANT ALL ON webctrl.settings TO webctrl;
 GRANT ALL ON webctrl.trend_mappings TO webctrl;
 GRANT ALL ON webctrl.trend_mappings_id_seq TO webctrl;
 GRANT ALL ON webctrl.trend_data TO webctrl;
+GRANT ALL ON webctrl.pending_commands TO webctrl;
+GRANT ALL ON webctrl.pending_commands_id_seq TO webctrl;
+ALTER TABLE webctrl.pending_commands OWNER TO webctrl;
 --*/
 
 -- Use this query to drop all webctrl tables
@@ -371,6 +474,8 @@ DELETE FROM webctrl.operator_blacklist_exceptions;
 DELETE FROM webctrl.trend_mappings;
 ALTER SEQUENCE webctrl.trend_mappings_id_seq RESTART;
 DELETE FROM webctrl.trend_data;
+DELETE FROM webctrl.pending_commands;
+ALTER SEQUENCE webctrl.pending_commands_id_seq RESTART;
 --*/
 
 -- Insert administrators from your WebCTRL server into webctrl.operator_whitelist

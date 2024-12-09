@@ -23,6 +23,8 @@ WebCTRL is a trademark of Automated Logic Corporation.  Any other trademarks men
     - [Reverse Operator Sync](#reverse-operator-sync)
     - [Operator Blacklist](#operator-blacklist)
     - [Operator Blacklist Exceptions](#operator-blacklist-exceptions)
+    - [Pending Commands](#pending-commands)
+      - [Examples](#examples)
     - [Find Trends](#find-trends)
     - [Trend Mappings](#trend-mappings)
 
@@ -54,6 +56,8 @@ When this WebCTRL add-on is installed and configured, it periodically communicat
   - Add-ons that are not white or blacklisted remain unaltered
 - Manage the PostgreSQL database from the add-on's main page on any connected server
   - Only whitelisted operators are permitted to manage the database
+- Remotely push out commands for servers to execute during their next sync
+  - Among other things, this function can be used for automated bulk installation of WebCTRL patches
 - Import or export a JSON document containing local operators
 - Optionally collect data from specific WebCTRL trends
 
@@ -162,9 +166,9 @@ In addition to the SFTP connection settings shown in the previous section, there
 | Setting | Example | Description |
 | - | - | - |
 | `debug` | `false` | When enabled, log messages will be more verbose. |
-| `log_expiration` | `14` | Specifies how many days to retain log messages in the database. |
+| `log_expiration` | `60` | Specifies how many days to retain log messages in the database. |
 | `auto_update` | `true` | Specifies whether to attempt automatic updates for this add-on. |
-| `version` | `0.5.8` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
+| `version` | `0.5.9.1` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
 | `download_path` | `/webctrl/addons/PostgreSQL_Connect.addon` | When `auto_update` is enabled, this is the SFTP server path where the latest version add-on file will be retrieved. |
 | `license_directory` | `/webctrl/licenses` | Specifies an SFTP server directory path for where to store WebCTRL license files. |
 | `ftp_host` | `postgresql.domain.com` | SFTP server hostname or IP address. |
@@ -195,7 +199,7 @@ This page lists all connected servers. If a server is decomissioned or permanent
 | ID | `1` | Internal ID which uniquely identifies the server within the PostgreSQL database. (Read-only) |
 | Name | `ACES Main Building` | User-friendly display name for the server. This defaults to the display name of the root of the Geo tree. |
 | WebCTRL Version | `8.5.002.20230323-123687` | Full version of the WebCTRL server. (Read-only) |
-| Add-On Version | `0.5.8` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
+| Add-On Version | `0.5.9.1` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
 | IP Address | `123.45.67.89` | External IP address of the server as viewed by the PostgreSQL database. (Read-only) |
 | Last Sync | `2024-12-02 14:05:32` | Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green; otherwise, the background is red. (Read-only) |
 | License | `WebCTRL Premium` | Click this field to download WebCTRL's license. (Read-only) |
@@ -269,6 +273,73 @@ Exceptions entered into this table through the add-on's configuration pages affe
 | - | - | - |
 | Username | `aces` | Specifies a blacklisted username which should be allowed to exist on this WebCTRL server. |
 
+### Pending Commands
+
+Commands entered into this table are executed on servers during their next sync interval.
+
+| Column | Example | Description |
+| - | - | - |
+| Command ID | `4` | Unique identifier for this command. (Read-only) |
+| Server ID | `2` | Unique identifier for the WebCTRL server. You can retrieve the current server's ID from the add-on's main page. |
+| Server Name | `ACES Main` | User-friendly name of the WebCTRL server. (Read-only) |
+| Ordering | `3` | When there are multiple command entries for a single server, this column specifies the ascending order in which commands are executed. |
+| Command | `notify "Hello!"` | The command(s) to execute. Multiple commands can be separated by newlines for fail-fast semantics. |
+
+Commands chained together using new-lines in a single entry are fail-fast, which means that execution is terminated immediately when an error is encountered. However, errors in one command entry do not affect other entries. Generally, commands are case-insensitive. Commands are tokenized using whitespace as delimiters. Double quotes can be used if a token must include whitespace. The caret character `^` can be used as an escape character. The local file path are specified, paths starting with `/` or `\` are treated as relative to WebCTRL's installation directory, and paths starting with `./` or `.\` are treated as relative to WebCTRL's active system directory. The two dots in `a/../b` go to the parent folder of `a`, so that `b` would be a sibling folder of `a`. Single-line comments are supported when a line is starts with `//`. The following commands are supported.
+
+| Command | Description |
+| - | - |
+| `duplicate [id1,id2,...]` | When a new pending command is created, and `duplicate` is on the first line, the command is copied to all servers with the specified IDs. If no server IDs are specified, then the command is copied to all servers. You can use `%ID%` anywhere in the command after the `duplicate` statement, and it will be replaced with the server ID of each server the command is copied to. |
+| `log <message>` | Writes a message to the add-on's log file. |
+| `notify <message>` | Functions identically to the `notify` manual command. Logged in operators get a popup message in their web browsers. |
+| `sleep <milliseconds>` | Sleeps for the specified number of milliseconds. |
+| `reboot` | Functions identically to the `rebootserver` manual command. The WebCTRL server reboots. |
+| `set <key> <value>` | Sets an add-on connection parameter to the specified value. These parameters can all be changed on the add-on's main page on each server, but this command allows remotely editing connection parameters in bulk. The following keys are supported: `connectionURL`, `username`, `password`, `keystorePassword`, `maxRandomOffset`, `cronSync`. |
+| `mkdir <folder_path>` | Creates a new directory on the local file system of the WebCTRL server. |
+| `rmdir <folder_path>` | Deletes a directory and contents on the local file system of the WebCTRL server. |
+| `rm <file_path>` | Deletes a file on the local file system of the WebCTRL server. |
+| `cp <src_path> <dst_path>` | Copies a file on the local file system of the WebCTRL server. |
+| `mv <src_path> <dst_path>` | Moves a file or directory on the local file system of the WebCTRL server. Try using `cp` and `rmdir` to move a folder if you encounter errors with this command; this command generally only works when the source and destination are on the same drive. |
+| `cat <file_path>` | Logs the contents of the specified file. |
+| `exists <path>` | Asserts that the specified file or directory exists. If non-existent, then command execution is terminated. |
+| `!exists <path>` | Asserts that the specified file or directory does not exists. If it exists, then command execution is terminated. |
+| `regex <file_path> <find> [replace]` | If a replacement string is not given, then this commands logs all matches of the regular expression in the specified file. If a replacement string is given, then this command edits the specified file by replacing all matches of the regular expression. The file's contents are assumed to be UTF-8 encoded text. The [MULTILINE](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/regex/Pattern.html#MULTILINE) and [DOTALL](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/regex/Pattern.html#DOTALL) flags are used by default. |
+| `download <sftp_file_path> <local_file_path>` | Downloads a file from the SFTP server into the local file system of the WebCTRL server. |
+| `upload <local_file_path> <sftp_file_path>` | Uploads a file from the local file system of the WebCTRL server into the SFTP server. |
+| `canApplyUpdate <file_path>` | Asserts that WebCTRL is able to apply the specified *.update* patch file. If the update cannot be applied, then command execution is terminated. |
+| `!canApplyUpdate <file_path>` | Asserts that WebCTRL is not able to apply the specified *.update* patch file. If the update can be applied, then command execution is terminated. |
+| `updateDST` | Updates daylight savings dates stored in the WebCTRL database and marks controllers for a pending parameter download. |
+
+#### Examples
+
+Here are a few sample scripts that can be modified to install WebCTRL patches in bulk.
+
+```
+duplicate 9,42,43,36,55,48,54,6,52,45,32,23,14,5,59,10,41,50,17,4
+download "/webctrl/updates/8.5/WS85_Security_Issue_Fix.update" "/WS85_Security_Issue_Fix.update"
+canApplyUpdate "/WS85_Security_Issue_Fix.update"
+log "WS85_Security_Issue_Fix.update can be applied!"
+rm "/WS85_Security_Issue_Fix.update"
+
+duplicate 9,42,43,36,55,48,54,6,52,45,32,23,14,5,59,10,41,50,17,4
+exists "/WS85_Security_Issue_Fix.update"
+log "WS85_Security_Issue_Fix.update cannot be applied!"
+rm "/WS85_Security_Issue_Fix.update"
+
+duplicate 14,50,42,55,36,32
+mkdir "/update_on_restart"
+download "/webctrl/updates/8.5/WS85_Security_Issue_Fix.update" "/update_on_restart/WS85_Security_Issue_Fix.update"
+canApplyUpdate "/update_on_restart/WS85_Security_Issue_Fix.update"
+notify "Rebooting to install security update."
+log "Rebooting to install security update."
+reboot
+
+duplicate 14,50,42,55,36,32
+exists "/update_on_restart"
+log "Update did not install."
+rmdir "/update_on_restart"
+```
+
 ### Find Trends
 
 This webpage helps you to find the persistent identifier for trends in order to track them in the database. See the next section for more details on how to use this identifier. You can browse the Geographic tree to search for trends. When you find a trend you want to track, click the turquoise colored trend type in order to copy the persistent identifier.
@@ -286,7 +357,7 @@ You can view all trend mappings from every WebCTRL server using this webpage.
 | Server Name | `ACES Main` | User-friendly name of the WebCTRL server. (Read-only) |
 | Name | `Boiler Temp` | User-friendly name to identity the trend mapping. |
 | Persistent Identifier | `DBID:1:2176071:hws` | Unique identifier for the microblock value to be trended. Use the 'Find Trends' page to retrieve this. |
-| Retain Data | `14` | Specifies how many days of historical data should be kept in the database. |
+| Retain Data | `60` | Specifies how many days of historical data should be kept in the database. |
 | Field Access | `false` | Whether to use field access when gathering trend data. If field access is disabled, then data collection will be faster, but it may not include the most up-to-date samples available. |
 | Sample Count | `3972` | Number of samples stored in the database. (Read-only) |
 | First Sample | `2024-11-19 14:10:00` | Timestamp of the oldest sample. (Read-only) |

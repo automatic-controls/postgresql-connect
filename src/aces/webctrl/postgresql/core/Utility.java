@@ -8,6 +8,7 @@ import java.util.*;
 import java.util.regex.*;
 import java.io.*;
 import java.nio.file.*;
+import java.nio.file.attribute.*;
 import java.time.*;
 import java.time.format.*;
 public class Utility {
@@ -17,6 +18,223 @@ public class Utility {
   public final static DateTimeFormatter timestampFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
   private final static Pattern lineEnding = Pattern.compile("\\r?+\\n");
   private final static Pattern formatter = Pattern.compile("\\$(\\d)");
+  /**
+   * Split a string into tokens.
+   */
+  public static String[] tokenize(String s){
+    final int len = s.length();
+    int i,j,k;
+    char c;
+    boolean esc = false;
+    boolean quote = false;
+    for (i=0,j=0,k=0;i<len;++i){
+      if (esc){
+        ++j;
+        esc = false;
+      }else{
+        c = s.charAt(i);
+        if (c=='^'){
+          esc = true;
+        }else if (quote){
+          if (c=='"'){
+            quote = false;
+            j = 0;
+            ++k;
+          }else{
+            ++j;
+          }
+        }else if (c=='"'){
+          quote = true;
+        }else if (c==' '){
+          if (j>0){
+            j = 0;
+            ++k;
+          }
+        }else{
+          ++j;
+        }
+      }
+    }
+    if (j>0){
+      ++k;
+    }
+    final String[] tokens = new String[k];
+    final StringBuilder sb = new StringBuilder();
+    for (i=0,k=0;i<len;++i){
+      c = s.charAt(i);
+      if (esc){
+        sb.append(c);
+        esc = false;
+      }else if (c=='^'){
+        esc = true;
+      }else if (quote){
+        if (c=='"'){
+          quote = false;
+          tokens[k++] = sb.toString();
+          sb.setLength(0);
+        }else{
+          sb.append(c);
+        }
+      }else if (c=='"'){
+        quote = true;
+      }else if (c==' '){
+        if (sb.length()>0){
+          tokens[k++] = sb.toString();
+          sb.setLength(0);
+        }
+      }else{
+        sb.append(c);
+      }
+    }
+    if (sb.length()>0){
+      tokens[k] = sb.toString();
+    }
+    return tokens;
+  }
+  /**
+   * Replaces matches of the regular expression {@code %.*?%} with the corresponding environment variable.
+   */
+  public static String expandEnvironmentVariables(String str){
+    if (str.indexOf('%')==-1){
+      return str;
+    }
+    int len = str.length();
+    StringBuilder out = new StringBuilder(len+16);
+    StringBuilder var = new StringBuilder();
+    String tmp;
+    boolean env = false;
+    char c;
+    for (int i=0;i<len;++i){
+      c = str.charAt(i);
+      if (c=='%'){
+        if (env){
+          tmp = System.getenv(var.toString());
+          if (tmp!=null){
+            out.append(tmp);
+            tmp = null;
+          }
+          var.setLength(0);
+        }
+        env^=true;
+      }else if (env){
+        var.append(c);
+      }else{
+        out.append(c);
+      }
+    }
+    return out.toString();
+  }
+  /**
+   * Assumes {@code src} and the parent of {@code dst} both exist.
+   * Ensures the contents of {@code dst} exactly match the contents of {@code src}.
+   * The last modified timestamp is used to determine whether two files of the same relative path are the same.
+   */
+  public static void copy(final Path src, final Path dst) throws IOException {
+    if (Files.isDirectory(src)){
+      boolean copyNew = false;
+      if (Files.exists(dst)){
+        if (Files.isDirectory(dst)){
+          LinkedList<Path> arr = new LinkedList<Path>();
+          try(
+            DirectoryStream<Path> stream = Files.newDirectoryStream(dst);
+          ){
+            for (Path p:stream){
+              arr.add(p);
+            }
+          }
+          LinkedList<CopyEvent> copies = new LinkedList<CopyEvent>();
+          try(
+            DirectoryStream<Path> stream = Files.newDirectoryStream(src);
+          ){
+            Path p;
+            for (Path a:stream){
+              p = dst.resolve(a.getFileName());
+              arr.remove(p);
+              copies.add(new CopyEvent(a,p));
+            }
+          }
+          for (Path p:arr){
+            deleteTree(p);
+            if (Initializer.stop){ return; }
+          }
+          arr = null;
+          for (CopyEvent e:copies){
+            e.exec();
+            if (Initializer.stop){ return; }
+          }
+        }else{
+          Files.delete(dst);
+          copyNew = true;
+        }
+      }else{
+        copyNew = true;
+      }
+      if (copyNew){
+        Files.walkFileTree(src, new SimpleFileVisitor<Path>(){
+          @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+            Files.createDirectory(dst.resolve(src.relativize(dir)));
+            return Initializer.stop?FileVisitResult.TERMINATE:FileVisitResult.CONTINUE;
+          }
+          @Override public FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+            Path p = dst.resolve(src.relativize(file));
+            Files.copy(file, p);
+            Files.setLastModifiedTime(p, Files.getLastModifiedTime(file));
+            return Initializer.stop?FileVisitResult.TERMINATE:FileVisitResult.CONTINUE;
+          }
+        });
+      }
+    }else{
+      FileTime srcTime = Files.getLastModifiedTime(src);
+      if (Files.exists(dst)){
+        if (Files.isDirectory(dst)){
+          deleteTree(dst);
+          if (Initializer.stop){ return; }
+          Files.copy(src, dst);
+          if (Initializer.stop){ return; }
+          Files.setLastModifiedTime(dst, srcTime);
+        }else if (Files.getLastModifiedTime(dst).compareTo(srcTime)!=0){
+          Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
+          if (Initializer.stop){ return; }
+          Files.setLastModifiedTime(dst, srcTime);
+        }
+      }else{
+        Files.copy(src, dst);
+        if (Initializer.stop){ return; }
+        Files.setLastModifiedTime(dst, srcTime);
+      }
+    }
+  }
+  /**
+   * Recursively deletes a file tree.
+   * @param root is the root of the tree to be deleted.
+   */
+  public static void deleteTree(Path root) throws IOException {
+    Files.walkFileTree(root, new SimpleFileVisitor<Path>(){
+      @Override public FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+        Files.delete(file);
+        return Initializer.stop?FileVisitResult.TERMINATE:FileVisitResult.CONTINUE;
+      }
+      @Override public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
+        if (e==null){
+          Files.delete(dir);
+          return Initializer.stop?FileVisitResult.TERMINATE:FileVisitResult.CONTINUE;
+        }else{
+          throw e;
+        }
+      }
+    });
+  }
+  private static class CopyEvent {
+    public Path src;
+    public Path dst;
+    public CopyEvent(Path src, Path dst){
+      this.src = src;
+      this.dst = dst;
+    }
+    public void exec() throws IOException {
+      Utility.copy(src,dst);
+    }
+  }
   /**
    * Replaces occurrences of {@code $n} in the input {@code String} with the nth indexed argument.
    * For example, {@code format("Hello $0!", "Beautiful")=="Hello Beautiful!"}.

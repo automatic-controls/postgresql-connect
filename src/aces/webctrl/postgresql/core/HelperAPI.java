@@ -1,13 +1,161 @@
 package aces.webctrl.postgresql.core;
 import java.util.*;
+import java.util.regex.*;
 import java.io.*;
 import java.nio.file.*;
 import com.controlj.green.webserver.*;
+import com.controlj.green.common.BroadcastNotificationHandler;
+import com.controlj.green.core.main.CoreApp;
+import com.controlj.green.core.main.CoreApp.ExitCode;
+import com.controlj.green.core.repactions.PopupRARequestProcessor;
 import com.controlj.green.core.ui.UserSession;
+import com.controlj.green.core.data.*;
+import com.controlj.green.core.download.api.TaskSet;
+import com.controlj.green.core.gcp.InstanceOverride;
+import com.controlj.green.core.gcp.InstanceOverrideParameter.GroupName;
+import com.controlj.green.core.bacnet.discovery.DiscoveryUtility;
 import com.controlj.green.datatable.util.CoreHelper;
+import com.controlj.green.update.*;
+import com.controlj.green.update.SystemUpdater.UpdaterInteraction;
 public class HelperAPI {
   private final static long timeout = 300L;
   private HelperAPI(){}
+  /**
+   * Update daylight savings dates in the WebCTRL database and marks controllers for parameter downloads.
+   */
+  public static boolean updateDST(){
+    try(
+      OperatorLink lnk = new OperatorLink(false);
+    ){
+      CoreDataSession cds = lnk.getCoreDataSession();
+      if (DiscoveryUtility.isOverridingTimeZone()){
+        CoreDatabaseServer.setDefaultDSTentries(DiscoveryUtility.getTimeZone(cds));
+      }else{
+        CoreDatabaseServer.setDefaultDSTentries();
+      }
+      CoreHWDevice dev;
+      for (CoreNode device:cds.selectNodesByCategory(4352)) {
+        dev = (CoreHWDevice)device;
+        CoreEquipmentNode driver = dev.getDriver();
+        InstanceOverride.setValuesByGroup(dev, GroupName.DST);
+        if (cds.hasModifiedNode()){
+          driver.markForDownload(TaskSet.PARAM_DOWN);
+          cds.commit();
+        }
+      }
+      return true;
+    }catch(Throwable t){
+      Initializer.log(t);
+      return false;
+    }
+  }
+  /**
+   * @return Whether the WebCTRL server is able to apply the given update file.
+   */
+  public static boolean canApplyUpdate(File f){
+    try{
+      return new SystemUpdater(UpdateManagerFactory.getSingletonInstance(), new UpdaterInteraction(){
+        @Override public void reportProductWillBeUpdatedAfterRestart(File var1) {}
+        @Override public void reportProductUpdatedApplied(File var1) {}
+        @Override public void reportUpdateHasAlreadyBeenApplied(File var1) throws Exception {}
+        @Override public void reportUpdateCannotBeAppliedToThisProductVersion() throws Exception {}
+        @Override public void reportUpdateIsForDifferentProduct() throws Exception {}
+        @Override public void reportFailedToReadUpdateFile(Exception var1, File var2) throws Exception {}
+        @Override public void reportError(Exception var1) throws Exception {}
+      }).canApply(f);
+    }catch(Throwable t){
+      if (Initializer.debug()){
+        Initializer.log(t);
+      }
+      return false;
+    }
+  }
+  /**
+   * Reboot the WebCTRL server.
+   * @param delay If greater than 0, this will start a new thread, wait the specified number of milliseconds, and then reboot the WebCTRL server.
+   *              If less than or equal to 0, this will reboot the WebCTRL server in the current thread without delay.
+   */
+  public static void reboot(final long delay){
+    if (delay>0){
+      new Thread(){
+        @Override public void run(){
+          try{
+            Thread.sleep(delay);
+          }catch(Throwable t){}
+          CoreApp.shutdown(ExitCode.SHUTDOWN_AND_RESTART);
+        }
+      }.start();
+    }else{
+      CoreApp.shutdown(ExitCode.SHUTDOWN_AND_RESTART);
+    }
+  }
+  /**
+   * Like the 'notify' manual command, this method sends a message to all logged-in WebCTRL operators.
+   * @return {@code true} on success; {@code false} if an error was encountered
+   */
+  public static boolean notify(String message){
+    try{
+      for (final UserSession session:UserSession.getAllInteractiveUserSessions()){
+        if (session instanceof BroadcastNotificationHandler) {
+          ((BroadcastNotificationHandler)session).broadcastMessage(message);
+        }
+      }
+      PopupRARequestProcessor.sendMessageToAll(message);
+      return true;
+    }catch(Throwable t){
+      Initializer.log(t);
+    }
+    return false;
+  }
+  private final static Pattern sepPattern = Pattern.compile("[/\\\\]++");
+  /**
+   * Resolve relative filepaths.
+   */
+  public static Path resolve(String path) throws InvalidPathException {
+    path = sepPattern.matcher(Utility.expandEnvironmentVariables(path).trim()).replaceAll("/");
+    Path p;
+    int i;
+    if (path.startsWith("./")){
+      p = Initializer.systemDir;
+      i = 2;
+    }else if (path.startsWith("/")){
+      p = Initializer.installDir;
+      i = 1;
+    }else{
+      return Paths.get(path.replace('/',File.separatorChar));
+    }
+    final StringBuilder sb = new StringBuilder();
+    char c;
+    String s;
+    int len = path.length();
+    for (;i<len;++i){
+      c = path.charAt(i);
+      if (c=='/'){
+        s = sb.toString().trim();
+        sb.setLength(0);
+        if (s.length()>0){
+          if (s.equals("..")){
+            p = p.getParent();
+          }else{
+            p = p.resolve(s);
+          }
+        }
+      }else{
+        sb.append(c);
+      }
+    }
+    if (sb.length()>0){
+      s = sb.toString().trim();
+      if (s.length()>0){
+        if (s.equals("..")){
+          p = p.getParent();
+        }else{
+          p = p.resolve(s);
+        }
+      }
+    }
+    return p;
+  }
   /**
    * Terminates sessions corresponding to the given set of usernames.
    * @return whether all relevant sessions were closed.

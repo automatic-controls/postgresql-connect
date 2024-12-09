@@ -38,6 +38,10 @@ public class Initializer implements ServletContextListener {
   public volatile static Path addonsDir;
   /** Path to the WebCTRL system license file */
   public volatile static Path licenseFile = null;
+  /** Path to WebCTRL's installation directory */
+  public volatile static Path installDir = null;
+  /** Path to WebCTRL's active system directory */
+  public volatile static Path systemDir = null;
   /** Contains the version of this WebCTRL server */
   public volatile static String version = null;
   /** Contains the truncated version of this WebCTRL server */
@@ -85,6 +89,8 @@ public class Initializer implements ServletContextListener {
     logger = info.getDateStampLogger();
     addonsDir = HelperAPI.getAddonsDirectory().toPath();
     try{
+      installDir = CJProductDirectories.getBaseDir().toPath();
+      systemDir = root.getParent().getParent().getParent();
       licenseFile = CJProductDirectories.getProgramDataDir().toPath().resolve("licenses").resolve("license.properties");
       if (!Files.exists(licenseFile)){
         final Path p = CJProductDirectories.getPropertiesDir().toPath().resolve("license.properties");
@@ -183,6 +189,7 @@ public class Initializer implements ServletContextListener {
               if (syncNow || (x=Config.cron.getNext())!=-1 && time>=x){
                 HelperAPI.removeAddon(AUTO_UPDATE_ADDON, true);
                 b = Sync.lastGeneralSyncSuccessful;
+                status = "Syncing...";
                 new Sync(Event.GENERAL);
                 if (b && !Sync.lastGeneralSyncSuccessful){
                   Config.cron.setNext(System.currentTimeMillis()+300000L);
