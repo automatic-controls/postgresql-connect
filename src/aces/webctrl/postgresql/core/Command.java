@@ -5,6 +5,10 @@ import java.io.*;
 import java.nio.*;
 import java.nio.file.*;
 import java.nio.channels.*;
+import com.controlj.green.common.launcher.MonitoredLauncher;
+import com.controlj.green.common.policy.PolicyUtils;
+import com.controlj.green.common.policy.PolicyUtils.KeyType;
+import com.controlj.launcher.ConfigurationDecorator;
 public class Command {
   private final static HashMap<String,Cmd> commandMap = new HashMap<>();
   static {
@@ -15,6 +19,62 @@ public class Command {
           return true;
         }else{
           c.sb.append("\n'reboot' does not accept any arguments.");
+          return false;
+        }
+      }
+    });
+    commandMap.put("uptime", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==1){
+          long uptime = com.controlj.green.core.main.Core.getSystemUptime();
+          int days = (int)(uptime/86400000L);
+          uptime-=(long)days*86400000L;
+          int hours = (int)(uptime/3600000L);
+          uptime-=(long)hours*3600000L;
+          int minutes = (int)(uptime/60000L);
+          //uptime-=(long)minutes*60000L;
+          c.sb.append("\nWebCTRL has been online for "+days+" days, "+hours+" hours, and "+minutes+" minutes.");
+          return true;
+        }else{
+          c.sb.append("\n'uptime' does not accept any arguments.");
+          return false;
+        }
+      }
+    });
+    commandMap.put("about", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==1){
+          HelperAPI.about(c.sb);
+          return true;
+        }else{
+          c.sb.append("\n'about' does not accept any arguments.");
+          return false;
+        }
+      }
+    });
+    commandMap.put("decrypt", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==2){
+          String p;
+          try{
+            try {
+              p = PolicyUtils.AESdecrypt(tokens[1], KeyType.DBPROPERTIES);
+            } catch (Throwable t) {
+              p = PolicyUtils.decode(tokens[1]);
+              if (Initializer.debug()){
+                Initializer.log(t);
+              }
+            }
+          } catch (Throwable t) {
+            p = "";
+            if (Initializer.debug()){
+              Initializer.log(t);
+            }
+          }
+          c.sb.append('\n').append(p);
+          return true;
+        }else{
+          c.sb.append("\n'decrypt' accepts exactly one argument.");
           return false;
         }
       }
@@ -43,6 +103,20 @@ public class Command {
           c.sb.append("\n'sleep' accepts exactly one argument.");
           return false;
         }
+      }
+    });
+    commandMap.put("email", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==4){
+          if (HelperAPI.sendEmail(tokens[1], tokens[2], tokens[3])){
+            return true;
+          }else{
+            c.sb.append("\n'email' failed to send message.");
+          }
+        }else{
+          c.sb.append("\n'email' accepts exactly three arguments.");
+        }
+        return false;
       }
     });
     commandMap.put("log", new Cmd(){
@@ -287,6 +361,28 @@ public class Command {
               }
               break;
             }
+            case "ram":{
+              try{
+                final int ram = Integer.parseInt(value);
+                if (ram<512 || ram>131072){
+                  c.sb.append("\n'set' ram value is out-of-range.");
+                  return false;
+                }
+                final ConfigurationDecorator config = new ConfigurationDecorator(MonitoredLauncher.loadConfiguration());
+                if (config.getMaxMemory()!=ram){
+                  config.setMaxMemory(ram);
+                  MonitoredLauncher.saveConfiguration(config.getConfiguration());
+                }
+              }catch(NumberFormatException e){
+                c.sb.append("\n'set' failed to parse number from expected value.");
+                return false;
+              }catch(Throwable t){
+                c.sb.append("\n'set' encountered error while configuring RAM.");
+                Initializer.log(t);
+                return false;
+              }
+              break;
+            }
             default:{
               c.sb.append("\n'set' does not recognize key: "+key);
               return false;
@@ -480,7 +576,7 @@ public class Command {
       try{
         for (String[] tokens: lines){
           if (!execute(tokens)){
-            break;
+            return false;
           }
         }
         return true;

@@ -4,12 +4,15 @@ import java.nio.*;
 import java.nio.channels.*;
 import java.nio.file.*;
 import com.jcraft.jsch.*;
+import java.util.regex.*;
 public class ConnectSFTP implements AutoCloseable {
   private volatile Session jschSession = null;
   private volatile ChannelSftp jschChannel = null;
   public ConnectSFTP(){
+    final String secondary_ids = Sync.settings.get("ftp_port_secondary_ids");
     final String host = Sync.settings.get("ftp_host");
-    final String port = Sync.settings.get("ftp_port");
+    final String port = secondary_ids==null || !Pattern.compile("(?:^|;)"+Config.ID+"(?:$|;)", Pattern.MULTILINE).matcher(secondary_ids).find() ?
+      Sync.settings.get("ftp_port") : Sync.settings.get("ftp_port_secondary");
     final String username = Sync.settings.get("ftp_username");
     final String key = Sync.settings.get("ftp_key");
     if (host==null || port==null || username==null || key==null){

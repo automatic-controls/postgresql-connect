@@ -28,7 +28,7 @@ public class TableCache {
       x.query = "SELECT \"id\", \"name\", \"version\", \"addon_version\", host(\"ip_address\"), "+
         "'background-color:'|| CASE WHEN \"last_sync\"+(INTERVAL '1 days')>CURRENT_TIMESTAMP THEN 'darkgreen' ELSE 'darkred' END ||'|'||DATE_TRUNC('seconds', \"last_sync\" AT TIME ZONE '"+timezone+"')::TEXT, "+
         "'<a target=\"_blank\" href=\""+Initializer.getPrefix()+"DownloadLicense?id='||\"id\"||'\" download=\"license-'||\"id\"||'.properties\">'||REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\"product_name\",'&','&amp;'),'\"','&quot;'),'''','&apos;'),'<','&lt;'),'>','&gt;')||'</a>', "+
-        "\"cum_updates\", \"notes\" FROM webctrl.servers ORDER BY STRING_TO_ARRAY(REGEXP_REPLACE(REPLACE(\"version\",'-','.'),'[^\\d\\.]','','g'), '.')::int[] DESC, \"name\" ASC;";
+        "\"cum_updates\", \"notes\" FROM webctrl.servers ORDER BY STRING_TO_ARRAY(REGEXP_REPLACE(REPLACE(\"version\",'-','.'),'[^\\d\\.]','','g'), '.')::int[] DESC, \"cum_updates\" DESC, \"name\" ASC;";
       x.conversion = basic;
       x.header = Utility.format(
         "[\"ID\",\"Name\",\"WebCTRL Version\",\"Add-On Version\",\"IP Address\",\"Last Sync\",\"License\",\"Cumulative Update\",\"Notes\"],[\"Internal ID which uniquely identifies the server.\",\"User-friendly display name for the server.\",\"Full version string for the WebCTRL server.\",\"Installed version of the PostgreSQL_Connect add-on.\",\"External IP address of the server as viewed by the PostgreSQL database.\",\"Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green.\",\"Click to download the WebCTRL license.\",\"Latest applied cumulative update.\",\"Notes pertaining to this server.\"],[\"$0\",\"$1\",\"$2\",\"$3\",\"$4\",\"$5\",\"$6\",\"$7\",\"\"]",
@@ -235,12 +235,14 @@ public class TableCache {
         "ON \"x\".\"server_id\" = \"z\".\"id\"\n"+
         "ORDER BY \"x\".\"server_id\";";
       x.header = "[\"Trend ID\",\"Server ID\",\"Server Name\",\"Name\",\"Persistent Identifier\",\"Retain Data\",\"Field Access\",\"Sample Count\",\"First Sample\",\"Last Sample\"],[\"Unique identifier for this trend mapping.\",\"Unique identifier for the WebCTRL server.\",\"User-friendly name of the WebCTRL server.\",\"User-friendly name to identity the trend mapping.\",\"Unique identifier for the microblock value to be trended. Use the 'Find Trends' page to retrieve this.\",\"Specifies how many days of historical data should be kept in the database.\",\"Whether to use field access when gathering trend data. If field access is disabled, then data collection will be faster, but it may not include the most up-to-date samples available.\",\"Number of samples stored in the database.\",\"Timestamp of the oldest sample.\",\"Timestamp of the most recent sample.\"],"+
-        "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^.+$\",\"^.+$\",\"^\\\\d+$\",\"^true$|^false$\",\"<READONLY>0\",\"<READONLY>N/A\",\"<READONLY>N/A\"]";
+        "[\"<READONLY>N/A\",\"^\\\\d*$\",\"<READONLY>N/A\",\"^.+$\",\"^.+$\",\"^\\\\d+$\",\"^true$|^false$\",\"<READONLY>0\",\"<READONLY>N/A\",\"<READONLY>N/A\"]";
       x.conversion = new BiFunction<Integer,String,String>(){
         @Override public String apply(Integer i, String s){
           if (i==0){
             return s.equalsIgnoreCase("N/A")?"DEFAULT":String.valueOf(Integer.parseInt(s));
-          }else if (i==1 || i==4){
+          }else if (i==1){
+            return String.valueOf(s.isEmpty()?Config.ID:Integer.parseInt(s));
+          }else if (i==4){
             return String.valueOf(Integer.parseInt(s));
           }else if (i==5){
             return s.equals("1") || s.equalsIgnoreCase("true") ? "TRUE":"FALSE";
@@ -273,15 +275,17 @@ public class TableCache {
         @Override public String apply(Integer i, String s){
           if (i==0){
             return s.equalsIgnoreCase("N/A")?"DEFAULT":String.valueOf(Integer.parseInt(s));
+          }else if (i==1){
+            return String.valueOf(s.isEmpty()?Config.ID:Integer.parseInt(s));
           }else if (i==2){
-            return String.valueOf(Integer.parseInt(s));
+            return String.valueOf(s.isEmpty()?1:Integer.parseInt(s));
           }else{
             return Utility.escapePostgreSQL(s);
           }
         }
       };
       x.header = "[\"Command ID\",\"Server ID\",\"Server Name\",\"Ordering\",\"Command\"],[\"Unique identifier for this command.\",\"Unique identifier for the WebCTRL server.\",\"User-friendly name of the WebCTRL server.\",\"Commands are executed in the ascending order specified by this column.\",\"The command(s) to execute. Multiple commands can be separated by newlines for fail-fast semantics.\"],"+
-        "[\"<READONLY>N/A\",\"^\\\\d+$\",\"<READONLY>N/A\",\"^\\\\d+$\",\"^.+$\"]";
+        "[\"<READONLY>N/A\",\"^\\\\d*$\",\"<READONLY>N/A\",\"^\\\\d*$\",\"^.+$\"]";
       tables.put(x.name,x);
     }
   }

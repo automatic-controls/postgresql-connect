@@ -53,6 +53,8 @@
         msgTD.innerText = r[2];
         msgTD.style.color = r[1]=="true"?"red":"white";
         msgTD.style.textAlign = "left";
+        msgTD.style.fontFamily = "\"Courier New\", monospace";
+        msgTD.style.whiteSpace = "pre";
         body.appendChild(timeTD);
         body.appendChild(msgTD);
         body.appendChild(tr);

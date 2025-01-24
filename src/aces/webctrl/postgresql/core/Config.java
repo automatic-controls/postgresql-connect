@@ -18,17 +18,17 @@ public class Config {
     username = "";
     password = "";
     keystorePassword = "";
-    maxRandomOffset = 0L;
+    maxRandomOffset = 900000L;
     cron.set("0 0 * * * *");
   }
   private Config(){}
   /**
    * Resets the link ID for the database tables
    */
-  public static void reset(){
+  public static void reset(int newID){
     synchronized (Sync.class){
       new Sync(Event.SHUTDOWN);
-      ID = -1;
+      ID = newID;
       Sync.versionCompatible = false;
       Sync.started = false;
     }
@@ -81,7 +81,7 @@ public class Config {
     try{
       String cronExpr = cron.toString();
       if (cronExpr==null){ cronExpr = ""; }
-      int l = 4;
+      int l = 0;
       l+=Initializer.addonVersion.length();
       l+=connectionURL.length();
       l+=username.length();
@@ -89,7 +89,7 @@ public class Config {
       l+=cronExpr.length();
       l+=keystorePassword.length();
       l<<=1;
-      l+=4;
+      l+=36;
       final SerializationStream s = new SerializationStream(l, true);
       s.write(ID);
       s.write(Initializer.addonVersion);

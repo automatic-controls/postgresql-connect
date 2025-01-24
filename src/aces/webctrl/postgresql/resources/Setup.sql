@@ -370,7 +370,7 @@ CREATE OR REPLACE FUNCTION webctrl.webctrl_duplicate_pending_commands() RETURNS 
       SELECT
         "y"."id" AS "server_id",
         "x"."ordering",
-        REGEXP_REPLACE("x"."command", '%ID%', "y"."id"::TEXT, 1, 0, 'i') AS "command"
+        REGEXP_REPLACE(REGEXP_REPLACE("x"."command", '%ID%', "y"."id"::TEXT, 1, 0, 'i'), '%NAME%', "y"."name", 1, 0, 'i') AS "command"
       FROM (
         SELECT
           "ordering",
@@ -378,21 +378,27 @@ CREATE OR REPLACE FUNCTION webctrl.webctrl_duplicate_pending_commands() RETURNS 
         FROM "new_row" "x"
         WHERE "command" ~* '^\s*duplicate\s*[\n\r]'
       ) "x" CROSS JOIN (
-        SELECT DISTINCT "id" FROM webctrl.servers
+        SELECT "id", "name" FROM webctrl.servers
       ) "y"
     ) UNION (
       SELECT
-        "server_id"::INTEGER,
+        "y"."id" AS "server_id",
         "x"."ordering",
-        REGEXP_REPLACE("x"."command", '%ID%', "server_id"::TEXT, 1, 0, 'i') AS "command"
+        REGEXP_REPLACE(REGEXP_REPLACE("x"."command", '%ID%', "y"."id"::TEXT, 1, 0, 'i'), '%NAME%', "y"."name", 1, 0, 'i') AS "command"
       FROM (
         SELECT
           "ordering",
           REGEXP_SUBSTR("command", '^\s*duplicate\s*\d+(?:\s*,\s*\d+)*[\n\r](.*)$', 1, 1, 'i', 1) AS "command",
-          STRING_TO_ARRAY(REPLACE(REGEXP_SUBSTR("command", '^\s*duplicate\s*(\d+(?:\s*,\s*\d+)*)[\n\r](.*)$', 1, 1, 'i', 1),' ',''),',') AS "ids"
+          STRING_TO_ARRAY(REPLACE(REGEXP_SUBSTR("command", '^\s*duplicate\s*(\d+(?:\s*,\s*\d+)*)[\n\r](.*)$', 1, 1, 'i', 1),' ',''),',')::INT[] AS "ids"
         FROM "new_row" "x"
         WHERE "command" ~* '^\s*duplicate\s*\d+(?:\s*,\s*\d+)*[\n\r]'
-      ) "x" CROSS JOIN LATERAL UNNEST("x"."ids") AS "server_id"
+      ) "x" CROSS JOIN LATERAL (
+        SELECT
+          "id",
+          "name"
+        FROM webctrl.servers
+        WHERE "id" = ANY("x"."ids")
+      ) "y"
     );
     IF FOUND THEN
       RETURN NULL;

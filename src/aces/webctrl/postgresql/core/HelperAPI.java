@@ -1,15 +1,31 @@
 package aces.webctrl.postgresql.core;
 import java.util.*;
 import java.util.regex.*;
+import java.util.stream.Collectors;
 import java.io.*;
+import java.lang.management.ManagementFactory;
+import com.sun.management.OperatingSystemMXBean;
 import java.nio.file.*;
+import java.text.NumberFormat;
+import java.text.SimpleDateFormat;
+import java.nio.charset.StandardCharsets;
 import com.controlj.green.webserver.*;
 import com.controlj.green.common.BroadcastNotificationHandler;
+import com.controlj.green.common.CJAboutHelper.JvmInfo;
+import com.controlj.green.common.CJIO;
+import com.controlj.green.common.CJProduct;
+import com.controlj.green.common.Feature;
+import com.controlj.green.common.CJStringTokenizer;
+import com.controlj.green.common.LanguageManager;
 import com.controlj.green.core.main.CoreApp;
 import com.controlj.green.core.main.CoreApp.ExitCode;
+import com.controlj.green.core.main.CoreProduct;
 import com.controlj.green.core.repactions.PopupRARequestProcessor;
 import com.controlj.green.core.ui.UserSession;
 import com.controlj.green.core.data.*;
+import com.controlj.green.core.database.*;
+import com.controlj.green.core.email.*;
+import com.controlj.green.core.database.BaseDB.DatabaseInfo;
 import com.controlj.green.core.download.api.TaskSet;
 import com.controlj.green.core.gcp.InstanceOverride;
 import com.controlj.green.core.gcp.InstanceOverrideParameter.GroupName;
@@ -17,9 +33,175 @@ import com.controlj.green.core.bacnet.discovery.DiscoveryUtility;
 import com.controlj.green.datatable.util.CoreHelper;
 import com.controlj.green.update.*;
 import com.controlj.green.update.SystemUpdater.UpdaterInteraction;
+import com.controlj.green.update.entries.UpdateInfo;
+import com.controlj.green.common.launcher.MonitoredLauncher;
+import com.controlj.launcher.ConfigurationDecorator;
 public class HelperAPI {
   private final static long timeout = 300L;
   private HelperAPI(){}
+  /**
+   * Print information about the WebCTRL server to the given StringBuilder.
+   */
+  @SuppressWarnings("deprecation") // getFreePhysicalMemorySize() and getTotalPhysicalMemorySize()
+  public static void about(final StringBuilder sb){
+    final StringWriter sw = new StringWriter(512);
+    final PrintWriter w = new PrintWriter(sw);
+    final CJAboutInfoBackup abinfo = new CJAboutInfoBackup();//had to embed copy of this class for WebCTRL8.0
+    final JvmInfo jvm = new JvmInfo();
+    w.println("\n-----------------------------------------------------");
+    w.println("-     PostgreSQL_Connector Settings");
+    w.println("-----------------------------------------------------");
+    w.println("          Connection URL: "+Config.connectionURL);
+    w.println("                Username: "+Config.username);
+    w.println(" Max. Random Sync Offset: "+Config.maxRandomOffset);
+    w.println("    Cron Sync Expression: "+Config.cron.toString());
+    w.println("-----------------------------------------------------");
+    w.println("-     Resource Usage Information");
+    w.println("-----------------------------------------------------");
+    {
+      double free, total, used;
+      NumberFormat f = NumberFormat.getNumberInstance();
+      f.setMinimumFractionDigits(1);
+      f.setMaximumFractionDigits(1);
+      w.println(" "+jvm.getJvmInfoText());
+      final Runtime run = Runtime.getRuntime();
+      try{
+        w.println("     Processor Count: "+run.availableProcessors());
+        free = 0;
+        total = 0;
+        boolean lin = "Linux".equalsIgnoreCase(System.getProperty("os.name"));
+        if (lin){
+          final Path p = Paths.get("/proc/meminfo");
+          if (Files.isReadable(p)){
+            String data = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
+            Matcher m = Pattern.compile("^MemTotal:\\s*+(\\d++)", Pattern.MULTILINE).matcher(data);
+            total = m.find()?Long.parseLong(m.group(1))/1024.0:0.0;
+            m = Pattern.compile("^MemAvailable:\\s*+(\\d++)", Pattern.MULTILINE).matcher(data);
+            free = m.find()?Long.parseLong(m.group(1))/1024.0:0.0;
+          }
+        }
+        {
+          final OperatingSystemMXBean osBean = (OperatingSystemMXBean)ManagementFactory.getOperatingSystemMXBean();
+          if (free==0.0 && !lin){
+            free = osBean.getFreePhysicalMemorySize()/1048576.0;
+          }
+          if (total==0.0){
+            total = osBean.getTotalPhysicalMemorySize()/1048576.0;
+          }
+        }
+        used = total-free;
+        w.println("    System RAM usage: "+f.format(used/total*100.0)+"%");
+        w.println("                      "+f.format(used)+" MB = Used");
+        w.println("                      "+f.format(free)+" MB = Free");
+        w.println("                      "+f.format(total)+" MB = Total");
+      }catch(Throwable t){
+        if (Initializer.debug()){
+          Initializer.log(t);
+        }
+        w.println("An error was encountered while retrieving system memory statistics.");
+      }
+      {
+        double heap = run.totalMemory()/1048576.0;
+        total = run.maxMemory()/1048576.0;
+        used = heap-run.freeMemory()/1048576.0;
+        free = total-used;
+        w.println("   WebCTRL RAM usage: "+f.format(used/total*100.0)+"%");
+        w.println("                      "+f.format(used)+" MB = Used");
+        w.println("                      "+f.format(heap)+" MB = Alloc");
+        w.println("                      "+f.format(free)+" MB = Available");
+        w.println("                      "+f.format(total)+" MB = Total");
+        try{
+          w.println("                      "+f.format(new ConfigurationDecorator(MonitoredLauncher.loadConfiguration()).getMaxMemory())+" MB = Set");
+        }catch(Throwable t){
+          if (Initializer.debug()){
+            Initializer.log(t);
+          }
+        }
+      }
+      String r;
+      FileStore fs;
+      for (Path root: FileSystems.getDefault().getRootDirectories()){
+        r = root.toString();
+        try{
+          fs = Files.getFileStore(root);
+          free = fs.getUsableSpace()/1073741824.0;
+          total = fs.getTotalSpace()/1073741824.0;
+          used = total-free;
+          w.println(" "+r+" Drive");
+          w.println("    Capacity = "+f.format(used/total*100.0)+"%");
+          w.println("        Used = "+f.format(used)+" GB");
+          w.println("        Free = "+f.format(free)+" GB");
+          w.println("       Total = "+f.format(total)+" GB");
+        }catch(Throwable t){
+          if (Initializer.debug()){
+            Initializer.log(t);
+          }
+          w.println(" "+r+" drive could not be queried.");
+        }
+      }
+    }
+    w.println("-----------------------------------------------------");
+    w.println("-     License and Product Version Information");
+    w.println("-----------------------------------------------------");
+    abinfo.writeLicenseAndProductInfo(w);
+    w.println("-----------------------------------------------------");
+    w.println("-     Database Information");
+    w.println("-----------------------------------------------------");
+    for (BaseDB db : CoreDatabaseServer.getAllDBs()) {
+        w.println("Statistics for "+db.getName()+" database:");
+        try{
+          BaseDB.DatabaseInfo info = db.getInfo();
+          w.println("   Product: "+info.databaseProductName+" version "+info.databaseProductVersion);
+          w.println("   Driver:  "+info.driverName+" version "+info.driverVersion);
+          w.println("   URL:     "+info.url);
+        }catch(Throwable t){
+          if (Initializer.debug()){
+            Initializer.log(t);
+          }
+          w.println("   An error was encountered while retrieving database information.");
+        }
+    }
+    w.println("-----------------------------------------------------");
+    w.println("-     System Updates and Patch Information");
+    w.println("-----------------------------------------------------");
+    try{
+      abinfo.writeUpdateInfo(w);
+    }catch(Throwable t){
+      if (Initializer.debug()){
+        Initializer.log(t);
+      }
+      w.println("An error was encountered while retrieving patch information.");
+    }
+    w.println("-----------------------------------------------------");
+    w.println("-     JVM Properties");
+    w.println("-----------------------------------------------------");
+    {
+      int i,j;
+      String[] jvmAtt;
+      String[] jvmVal;
+      for (Object[] jvmProp : jvm.getOrderedJavaProperties()) {
+        jvmAtt = CJStringTokenizer.split((String)jvmProp[0], 39);
+        jvmVal = CJStringTokenizer.split((String)jvmProp[1], 135);
+        j = Math.max(jvmAtt.length, jvmVal.length);
+        for (i = 0; i < j; ++i) {
+          if (i < jvmAtt.length) {
+            w.print(CJIO.formatToLength(jvmAtt[i], 40, true));
+          } else {
+            w.print(CJIO.formatToLength("", 40, true));
+          }
+          if (i < jvmVal.length) {
+            w.print(CJIO.formatToLength(jvmVal[i], 135, true));
+          } else {
+            w.print(CJIO.formatToLength("", 135, true));
+          }
+          w.println();
+        }
+      }
+    }
+    final StringBuffer buf = sw.getBuffer();
+    buf.setLength(buf.length()-1);
+    sb.append(Pattern.compile("(?<=[\\r\\n])[\\r\\n]++").matcher(buf.toString().replace("\r","")).replaceAll(""));
+  }
   /**
    * Update daylight savings dates in the WebCTRL database and marks controllers for parameter downloads.
    */
@@ -106,6 +288,29 @@ public class HelperAPI {
       Initializer.log(t);
     }
     return false;
+  }
+  private final static Pattern emailSepPattern = Pattern.compile("(?:\\s*+;++)++\\s*+");
+  /**
+   * Send an email.
+   * @return {@code true} if the email was sent successfully or if email is not configured, or {@code false} if an exception was encountered while attempting to send the email.
+   */
+  public static boolean sendEmail(String recipients, String subject, String message){
+    if (recipients==null || subject==null || message==null || recipients.isBlank() || subject.isBlank() || message.isBlank()){
+      return true;
+    }
+    final String[] recip = emailSepPattern.split(recipients);
+    try{
+      EmailParametersBuilder pb = EmailServiceFactory.createParametersBuilder();
+      pb.withSubject(subject);
+      pb.withToRecipients(recip);
+      pb.withMessageContents(message);
+      pb.withMessageMimeType("text/plain");
+      EmailServiceFactory.getService().sendEmail(pb.build());
+      return true;
+    }catch(Throwable t){
+      Initializer.log(t);
+      return false;
+    }
   }
   private final static Pattern sepPattern = Pattern.compile("[/\\\\]++");
   /**
@@ -527,6 +732,134 @@ public class HelperAPI {
     }catch(Throwable t){
       Initializer.log(t);
       return false;
+    }
+  }
+  private static class CJAboutInfoBackup {
+    private final String language = LanguageManager.getSystemLocale().toString();
+    public CJAboutInfoBackup() {
+    }
+    private String label(String label) {
+      return CJIO.formatToLength(label, 20, false);
+    }
+    private void writeIfNotEmpty(PrintWriter out, String s) {
+      if (!s.isBlank()) {
+        out.println(s);
+      }
+    }
+    public void writeLicenseAndProductInfo(PrintWriter out) {
+      if (!CoreProduct.isEndUser()) {
+        if (CoreProduct.isDeveloper()) {
+          out.println(this.label("Developer Copy: ") + CoreProduct.getVendorName("en"));
+        } else if (CoreProduct.isDealer()) {
+          out.println(this.label("Dealer Copy: ") + CoreProduct.getVendorName("en"));
+        } else if (CoreProduct.isOEM()) {
+          out.println(this.label("OEM Copy: ") + CoreProduct.getVendorName("en"));
+        }
+      }
+      out.println(this.label("Version: ") + CoreProduct.getDistProductName() + " " + CoreProduct.getVersion());
+      out.println(this.label("Build: ") + CoreProduct.getBuildVersion() + " " + CoreProduct.getBuildDescription());
+      this.writeIfNotEmpty(out, this.label("") + CoreProduct.getCopyright());
+      if (CoreProduct.isRegistered()) {
+        if (CoreProduct.doesShowLicenseInfo()) {
+          out.println(this.label("Licensed to: ") + CoreProduct.getOwnerName(this.language) + " " + CoreProduct.getOwnerAffiliation(this.language));
+          out.println(
+          this.label("For use at: ")
+          + CoreProduct.getLocationName(this.language)
+          + " "
+          + Utility.coalesce(CoreProduct.getLocationAddress1(this.language),"")
+          + " "
+          + Utility.coalesce(CoreProduct.getLocationAddress2(this.language),"")
+          + " "
+          + Utility.coalesce(CoreProduct.getLocationAddress3(this.language),"")
+          );
+          Date expirationDate = CJProduct.getExpirationDate();
+          if (expirationDate != null) {
+            out.println(this.label("Expires: ") + SimpleDateFormat.getDateInstance().format(expirationDate));
+          }
+        }
+        if (CoreProduct.doesShowPointLimits()) {
+          if (CoreProduct.getMaxHWDevices() > 0) {
+            out.println(this.label("Max Device Limit: ") + CoreProduct.getMaxHWDevices());
+          }
+          int pointLimit = CoreProduct.getPointLimit();
+          out.println(this.label("Total Points: ") + (pointLimit == -1 ? "unlimited" : pointLimit));
+        }
+        if (Feature.AboutFeatures.isSupported()) {
+          out.println(this.label("Enabled Features: ") + CoreProduct.getEnabledFeatures(this.language));
+          out.println(this.label("Licensed Features: ") + CoreProduct.getAvailableFeatures(this.language));
+        }
+      } else if (CoreProduct.doesShowLicenseInfo()) {
+        out.println("*** Unregistered Copy ***");
+      }
+      out.println(this.label("Serial Number: ") + CoreProduct.getSerialNumber());
+      out.println(this.label("Issue Number: ") + CoreProduct.getIssueNumber());
+      out.println(this.label("Java Version: ") + System.getProperty("java.vm.vendor") + " " + System.getProperty("java.vm.name") + " " + System.getProperty("java.vm.version"));
+      out.println(this.label("Server OS: ") + System.getProperty("os.name") + " " + System.getProperty("os.version"));
+      try {
+        DatabaseInfo info = CoreDatabaseServer.getCoreDB().getInfo();
+        out.println(this.label("Database: ") + info.databaseProductName + " " + info.databaseProductVersion);
+      } catch (DatabaseException var2) {
+        out.println(this.label("Database: "));
+      }
+      out.println();
+    }
+    public void writeUpdateInfo(PrintWriter out) throws Exception {
+      UpdateManager updMgr = UpdateManagerFactory.getSingletonInstance();
+      if (!updMgr.haveAnyUpdatesBeenApplied()) {
+        this.writeHeader(out, "Updates");
+        out.println("No updates have been applied");
+      } else {
+        for (UpdateType updateType : UpdateType.values()) {
+          if (updateType != UpdateType.ServicePack) {
+            List<UpdateInfo> updatesByType = updMgr.getUpdateInfo().getSortedUpdateInfoOfType(updateType);
+            String name = updateType.name();
+            if (updateType == UpdateType.Patch) {
+              List<UpdateInfo> cumulativeUpdates = updatesByType.stream()
+              .filter(updateInfo -> updateInfo.getFileName().endsWith("umulative.update"))
+              .collect(Collectors.toList());
+              List<UpdateInfo> patchUpdates = updatesByType.stream()
+              .filter(updateInfo -> !updateInfo.getFileName().endsWith("umulative.update"))
+              .collect(Collectors.toList());
+              this.writeUpdatesForType(out, cumulativeUpdates, "Cumulative");
+              this.writeUpdatesForType(out, patchUpdates, "Patch");
+            } else {
+              this.writeUpdatesForType(out, updatesByType, name);
+            }
+          }
+        }
+      }
+    }
+    private void writeUpdatesForType(PrintWriter out, List<UpdateInfo> updatesByType, String name) {
+      if (updatesByType.size() > 0) {
+        this.writeHeader(out, "Updates of type: " + name);
+        out.println();
+        for (UpdateInfo nextUpdInfo : updatesByType) {
+          String notesText = nextUpdInfo.getNotes();
+          if ("null".equalsIgnoreCase(notesText)) {
+            notesText = "No notes available.";
+          }
+          out.println("Update : " + nextUpdInfo.getFileName());
+          out.println("Created: " + nextUpdInfo.getCreatedDate());
+          out.println("Applied: " + nextUpdInfo.getDateApplied());
+          out.println("Notes  : " + notesText);
+          out.println();
+        }
+      }
+    }
+    private void writeHeader(PrintWriter out, String text) {
+      int extra = 50 - (text.length() + 2);
+      int left = extra / 2;
+      int right = extra - left;
+      while (left-- > 0) {
+        out.print('=');
+      }
+      out.print(' ');
+      out.print(text);
+      out.print(' ');
+      while (right-- > 0) {
+        out.print('=');
+      }
+      out.println();
     }
   }
 }

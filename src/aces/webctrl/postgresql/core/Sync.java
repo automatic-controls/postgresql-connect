@@ -44,6 +44,7 @@ public class Sync {
         final String username = Config.username;
         final String password = Config.password;
         if (url.length()<=18){
+          Initializer.status = "Connection URL is invalid.";
           return;
         }
         final Properties connectionParams = new Properties();
@@ -786,7 +787,7 @@ public class Sync {
                 }
                 if (Initializer.stop){ return; }
                 // Execute pending commands
-                {
+                while (true){
                   final ArrayList<Command> commands = new ArrayList<Command>();
                   try(
                     Statement s = con.createStatement();
@@ -817,10 +818,17 @@ public class Sync {
                       s.executeBatch();
                     }
                     con.commit();
+                    boolean cont = false;
                     for (Command c: commands){
-                      c.execute();
+                      if (!c.execute() && c.hasReboot()){
+                        cont = true;
+                      }
+                    }
+                    if (cont){
+                      continue;
                     }
                   }
+                  break;
                 }
                 if (!cleanedLogs){
                   if (Initializer.stop){ return; }

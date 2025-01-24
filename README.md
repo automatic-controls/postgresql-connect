@@ -27,6 +27,9 @@ WebCTRL is a trademark of Automated Logic Corporation.  Any other trademarks men
       - [Examples](#examples)
     - [Find Trends](#find-trends)
     - [Trend Mappings](#trend-mappings)
+  - [Technical Information](#technical-information)
+    - [Packaged Dependencies](#packaged-dependencies)
+    - [Server ID Reset](#server-id-reset)
 
 ## Feature Summary
 
@@ -168,7 +171,7 @@ In addition to the SFTP connection settings shown in the previous section, there
 | `debug` | `false` | When enabled, log messages will be more verbose. |
 | `log_expiration` | `60` | Specifies how many days to retain log messages in the database. |
 | `auto_update` | `true` | Specifies whether to attempt automatic updates for this add-on. |
-| `version` | `0.5.9.1` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
+| `version` | `0.5.10` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
 | `download_path` | `/webctrl/addons/PostgreSQL_Connect.addon` | When `auto_update` is enabled, this is the SFTP server path where the latest version add-on file will be retrieved. |
 | `license_directory` | `/webctrl/licenses` | Specifies an SFTP server directory path for where to store WebCTRL license files. |
 | `ftp_host` | `postgresql.domain.com` | SFTP server hostname or IP address. |
@@ -176,6 +179,8 @@ In addition to the SFTP connection settings shown in the previous section, there
 | `ftp_username` | `webctrl` | SFTP server username to use for connections. |
 | `ftp_known_hosts` | `postgresql.domain.com ecdsa-sha2-nistp256 ...` | Public key of the SFTP server to verify the server's identity. [Documentation](https://help.salesforce.com/s/articleView?id=001120703&type=1) |
 | `ftp_key` | `-----BEGIN OPENSSH PRIVATE KEY----- ...` | Private key which authenticates the client to the SFTP server. |
+| `ftp_port_secondary` | `443` | Secondary SFTP port which may be utilized by some servers. This may be useful to bypass certain firewalls. |
+| `ftp_port_secondary_ids` | `46;51;60;61;62` | Semi-colon delimited list of server IDs which should use the secondary SFTP port. |
 
 When trying to push out an update for the add-on, you should do things in the following order:
 
@@ -199,7 +204,7 @@ This page lists all connected servers. If a server is decomissioned or permanent
 | ID | `1` | Internal ID which uniquely identifies the server within the PostgreSQL database. (Read-only) |
 | Name | `ACES Main Building` | User-friendly display name for the server. This defaults to the display name of the root of the Geo tree. |
 | WebCTRL Version | `8.5.002.20230323-123687` | Full version of the WebCTRL server. (Read-only) |
-| Add-On Version | `0.5.9.1` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
+| Add-On Version | `0.5.10` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
 | IP Address | `123.45.67.89` | External IP address of the server as viewed by the PostgreSQL database. (Read-only) |
 | Last Sync | `2024-12-02 14:05:32` | Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green; otherwise, the background is red. (Read-only) |
 | License | `WebCTRL Premium` | Click this field to download WebCTRL's license. (Read-only) |
@@ -285,16 +290,20 @@ Commands entered into this table are executed on servers during their next sync 
 | Ordering | `3` | When there are multiple command entries for a single server, this column specifies the ascending order in which commands are executed. |
 | Command | `notify "Hello!"` | The command(s) to execute. Multiple commands can be separated by newlines for fail-fast semantics. |
 
-Commands chained together using new-lines in a single entry are fail-fast, which means that execution is terminated immediately when an error is encountered. However, errors in one command entry do not affect other entries. Generally, commands are case-insensitive. Commands are tokenized using whitespace as delimiters. Double quotes can be used if a token must include whitespace. The caret character `^` can be used as an escape character. The local file path are specified, paths starting with `/` or `\` are treated as relative to WebCTRL's installation directory, and paths starting with `./` or `.\` are treated as relative to WebCTRL's active system directory. The two dots in `a/../b` go to the parent folder of `a`, so that `b` would be a sibling folder of `a`. Single-line comments are supported when a line is starts with `//`. The following commands are supported.
+Commands chained together using new-lines in a single entry are fail-fast, which means that execution is terminated immediately when an error is encountered. However, errors in one command entry do not affect other entries. Generally, commands are case-insensitive. Commands are tokenized using whitespace as delimiters. Double quotes can be used if a token must include whitespace. The caret character `^` can be used as an escape character. The local file path are specified, paths starting with `/` or `\` are treated as relative to WebCTRL's installation directory, and paths starting with `./` or `.\` are treated as relative to WebCTRL's active system directory. The two dots in `a/../b` go to the parent folder of `a`, so that `b` would be a sibling folder of `a`. Environment variables enclosed in percent signs (e.g, `%USERNAME%`) are expanded when present in local paths. Single-line comments are supported when a line is starts with `//`. The following commands are supported.
 
 | Command | Description |
 | - | - |
-| `duplicate [id1,id2,...]` | When a new pending command is created, and `duplicate` is on the first line, the command is copied to all servers with the specified IDs. If no server IDs are specified, then the command is copied to all servers. You can use `%ID%` anywhere in the command after the `duplicate` statement, and it will be replaced with the server ID of each server the command is copied to. |
+| `duplicate [id1,id2,...]` | When a new pending command is created, and `duplicate` is on the first line, the command is copied to all servers with the specified IDs. If no server IDs are specified, then the command is copied to all servers. You can use `%ID%` or `%NAME%` anywhere in the command after the `duplicate` statement, and it will be replaced with the server ID or name of each server the command is copied to. |
+| `about` | Logs a bunch of information relevant to the WebCTRL server. This functions similarly to the `about` manual command. |
 | `log <message>` | Writes a message to the add-on's log file. |
 | `notify <message>` | Functions identically to the `notify` manual command. Logged in operators get a popup message in their web browsers. |
+| `email <recipients> <subject> <message>` | Sends a email using WebCTRL's primary email server configuration. Recipient addresses should be semi-colon delimited. |
 | `sleep <milliseconds>` | Sleeps for the specified number of milliseconds. |
 | `reboot` | Functions identically to the `rebootserver` manual command. The WebCTRL server reboots. |
-| `set <key> <value>` | Sets an add-on connection parameter to the specified value. These parameters can all be changed on the add-on's main page on each server, but this command allows remotely editing connection parameters in bulk. The following keys are supported: `connectionURL`, `username`, `password`, `keystorePassword`, `maxRandomOffset`, `cronSync`. |
+| `uptime` | Logs a message saying how long the WebCTRL server has been online. |
+| `set <key> <value>` | Sets a parameter to the specified value. Most of the parameters can be changed on the add-on's main page on each server, but this command allows remote editing in bulk. The following keys are supported: `connectionURL`, `username`, `password`, `keystorePassword`, `maxRandomOffset`, `cronSync`, `RAM`. The `RAM` key changes the amount of memory allocated to WebCTRL in MB and goes into affect at the next reboot. |
+| `decrypt <value>` | Logs a message containing the decrypted value. This function is only meant to work on encrypted WebCTRL database passwords found in *db.properties* in the system folder. |
 | `mkdir <folder_path>` | Creates a new directory on the local file system of the WebCTRL server. |
 | `rmdir <folder_path>` | Deletes a directory and contents on the local file system of the WebCTRL server. |
 | `rm <file_path>` | Deletes a file on the local file system of the WebCTRL server. |
@@ -303,7 +312,7 @@ Commands chained together using new-lines in a single entry are fail-fast, which
 | `cat <file_path>` | Logs the contents of the specified file. |
 | `exists <path>` | Asserts that the specified file or directory exists. If non-existent, then command execution is terminated. |
 | `!exists <path>` | Asserts that the specified file or directory does not exists. If it exists, then command execution is terminated. |
-| `regex <file_path> <find> [replace]` | If a replacement string is not given, then this commands logs all matches of the regular expression in the specified file. If a replacement string is given, then this command edits the specified file by replacing all matches of the regular expression. The file's contents are assumed to be UTF-8 encoded text. The [MULTILINE](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/regex/Pattern.html#MULTILINE) and [DOTALL](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/regex/Pattern.html#DOTALL) flags are used by default. |
+| `regex <file_path> <find> [replace]` | If a replacement string is not given, then this commands logs all matches of the regular expression in the specified file. If a replacement string is given, then this command edits the specified file by replacing all matches of the regular expression. The file's contents are assumed to be UTF-8 encoded text. The [MULTILINE](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html#MULTILINE) and [DOTALL](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html#DOTALL) flags are used by default. |
 | `download <sftp_file_path> <local_file_path>` | Downloads a file from the SFTP server into the local file system of the WebCTRL server. |
 | `upload <local_file_path> <sftp_file_path>` | Uploads a file from the local file system of the WebCTRL server into the SFTP server. |
 | `canApplyUpdate <file_path>` | Asserts that WebCTRL is able to apply the specified *.update* patch file. If the update cannot be applied, then command execution is terminated. |
@@ -403,3 +412,15 @@ CREATE TABLE webctrl.trend_data (
 CREATE INDEX webctrl_trend_data_id ON webctrl.trend_data ("id" ASC);
 CREATE INDEX webctrl_trend_data_time ON webctrl.trend_data ("time" DESC);
 ```
+
+## Technical Information
+
+### Packaged Dependencies
+
+- [PostgreSQL JDBC 42.7.5](https://jdbc.postgresql.org/) - Used to connect to PostgreSQL databases.
+- [JSch 0.2.22](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
+- [JSON-java 20250107](https://github.com/stleary/JSON-java) - Used to encode and decode JSON data.
+
+### Server ID Reset
+
+There is a *Reset ID* button on the add-on's main page. This will make the add-on forget its current server ID and re-register with the database at the start of the next sync. This server ID is the primary mechanism for how the database separates out data corresponding to different WebCTRL servers. If you ever need to force the add-on to choose a particular ID, you can craft and submit a particular HTTP request to the WebCTRL server. For example, *https://localhost/PostgreSQL_Connect/index?type=resetNow&newID=3* will force the ID of the WebCTRL server accessible at *localhost* to 3.

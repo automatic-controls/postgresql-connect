@@ -17,6 +17,18 @@ import java.util.*;
  */
 @MultipartConfig
 public class MainPage extends ServletBase {
+  private void sendHTML(final HttpServletRequest req, final HttpServletResponse res) throws Throwable {
+    res.setContentType("text/html");
+    res.getWriter().print(getHTML(req)
+      .replace("__CONNECTION_URL__", Utility.escapeJS(Config.connectionURL))
+      .replace("__USERNAME__", Utility.escapeJS(Config.username))
+      .replace("__ID__", String.valueOf(Config.ID))
+      .replace("__CRON__", Utility.escapeJS(Config.cron.toString()))
+      .replace("__RANDOM_OFFSET__", String.valueOf(Config.maxRandomOffset))
+      .replace("__CRON_DISPLAY__", Utility.escapeJS(Config.cron.getNextString("N/A")))
+      .replace("__STATUS__", Utility.escapeJS(Initializer.status))
+    );
+  }
   @Override public void exec(final HttpServletRequest req, final HttpServletResponse res) throws Throwable {
     final String reqUsername = getUsername(req);
     if (!checkWhitelist(reqUsername)){
@@ -25,16 +37,7 @@ public class MainPage extends ServletBase {
     }
     final String type = req.getParameter("type");
     if (type==null){
-      res.setContentType("text/html");
-      res.getWriter().print(getHTML(req)
-        .replace("__CONNECTION_URL__", Utility.escapeJS(Config.connectionURL))
-        .replace("__USERNAME__", Utility.escapeJS(Config.username))
-        .replace("__ID__", String.valueOf(Config.ID))
-        .replace("__CRON__", Utility.escapeJS(Config.cron.toString()))
-        .replace("__RANDOM_OFFSET__", String.valueOf(Config.maxRandomOffset))
-        .replace("__CRON_DISPLAY__", Utility.escapeJS(Config.cron.getNextString("N/A")))
-        .replace("__STATUS__", Utility.escapeJS(Initializer.status))
-      );
+      sendHTML(req, res);
     }else{
       switch (type){
         case "save":{
@@ -110,8 +113,20 @@ public class MainPage extends ServletBase {
           break;
         }
         case "resetNow":{
-          Config.reset();
+          String newID = req.getParameter("newID");
+          if (newID==null){
+            Config.reset(-1);
+          }else{
+            try{
+              Config.reset(Integer.parseInt(newID));
+            }catch(NumberFormatException e){
+              Config.reset(-1);
+            }
+          }
           Config.save();
+          if (newID!=null){
+            sendHTML(req, res);
+          }
           break;
         }
         case "testSFTP":{
