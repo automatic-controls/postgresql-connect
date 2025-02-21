@@ -36,7 +36,7 @@ public class Sync {
    */
   public Sync(Event event, String... args){
     synchronized (Sync.class){
-      if (Initializer.stop && event!=Event.SHUTDOWN){ return; }
+      if (!Initializer.hostValid || Initializer.stop && event!=Event.SHUTDOWN){ return; }
       try{
         boolean debug = Initializer.debug();
         final String connUrl = Config.connectionURL;
@@ -55,6 +55,7 @@ public class Sync {
         connectionParams.setProperty("sslpassword", Config.keystorePassword);
         connectionParams.setProperty("sslrootcert", Initializer.pgsslroot.toString());
         int ID = Config.ID;
+        SSHProxy.activate();
         switch (event){
           case SHUTDOWN:{
             if (ID==-1 || !started){
@@ -328,6 +329,25 @@ public class Sync {
                     s.executeUpdate();
                   }
                   con.commit();
+                }
+                if (Initializer.stop){ return; }
+                // Check for changes in SSH tunnels
+                {
+                  TunnelSSH.checkConnectionChanges();
+                  TunnelSSH.checkTunnelExpiry();
+                  final HashMap<Integer,TunnelSSH.Tunnel> tuns = new HashMap<>();
+                  try(
+                    Statement s = con.createStatement();
+                    ResultSet r = s.executeQuery("SELECT \"src_port\", \"dst_port\" FROM webctrl.tunnels WHERE \"server_id\" = "+ID+";");
+                  ){
+                    int l;
+                    while (r.next()){
+                      l = r.getInt(1);
+                      tuns.put(l, new TunnelSSH.Tunnel(l, r.getInt(2), 0));
+                    }
+                  }
+                  con.commit();
+                  TunnelSSH.refreshPersistentTunnels(tuns);
                 }
                 if (Initializer.stop){ return; }
                 // Update webctrl.events
@@ -896,6 +916,7 @@ public class Sync {
         if (event==Event.GENERAL){
           lastGeneralSyncSuccessful = success;
         }
+        SSHProxy.deactivate();
       }
     }
   }

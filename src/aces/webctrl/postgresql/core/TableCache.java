@@ -288,6 +288,48 @@ public class TableCache {
         "[\"<READONLY>N/A\",\"^\\\\d*$\",\"<READONLY>N/A\",\"^\\\\d*$\",\"^.+$\"]";
       tables.put(x.name,x);
     }
+    {
+      //tunnels
+      x = new TableTemplate("tunnels", "SSH Tunnels");
+      x.keyColumn = "id";
+      x.otherColumns = "\"server_id\",\"src_port\",\"dst_port\",\"desc\"";
+      x.query =
+        "SELECT\n"+
+        "  \"x\".\"id\",\n"+
+        "  \"x\".\"server_id\",\n"+
+        "  COALESCE(\"y\".\"name\", 'N/A') AS \"server_name\",\n"+
+        "  \"x\".\"src_port\",\n"+
+        "  \"x\".\"dst_port\",\n"+
+        "  \"x\".\"desc\"\n"+
+        "FROM webctrl.tunnels \"x\"\n"+
+        "LEFT JOIN (\n"+
+        "  SELECT \"id\", \"name\" FROM webctrl.servers\n"+
+        ") \"y\"\n"+
+        "ON \"x\".\"server_id\" = \"y\".\"id\"\n"+
+        "ORDER BY \"x\".\"src_port\";";
+      x.conversion = new BiFunction<Integer,String,String>(){
+        @Override public String apply(Integer i, String s){
+          if (i==0){
+            return s.equalsIgnoreCase("N/A")?"DEFAULT":String.valueOf(Integer.parseInt(s));
+          }else if (i==1){
+            return String.valueOf(s.isEmpty()?Config.ID:Integer.parseInt(s));
+          }else if (i==2 || i==3){
+            int x = s.isEmpty()?1:Integer.parseInt(s);
+            if (x<1){
+              x = 1;
+            }else if (x>65535){
+              x = 65535;
+            }
+            return String.valueOf(x);
+          }else{
+            return Utility.escapePostgreSQL(s);
+          }
+        }
+      };
+      x.header = "[\"Tunnel ID\",\"Server ID\",\"Server Name\",\"Source Port\",\"Destination Port\",\"Description\"],[\"Unique identifier for this command.\",\"Unique identifier for the WebCTRL server.\",\"User-friendly name of the WebCTRL server.\",\"Listening port to open on the SSH server (TCP only).\",\"Destination port to forward to on the WebCTRL server.\",\"Brief description of the tunnel's purpose.\"],"+
+        "[\"<READONLY>N/A\",\"^\\\\d*$\",\"<READONLY>N/A\",\"^[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]$\",\"^[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]$\",\"^.+$\"]";
+      tables.put(x.name,x);
+    }
   }
   volatile static TableCache instance = null;
   public volatile int rows;

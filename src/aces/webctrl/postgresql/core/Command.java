@@ -52,6 +52,54 @@ public class Command {
         }
       }
     });
+    commandMap.put("opentunnel", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==3 || tokens.length==4){
+          try{
+            final int listenPort = Integer.parseInt(tokens[1]);
+            final int targetPort = Integer.parseInt(tokens[2]);
+            final long timeout = tokens.length==3?0:Long.parseLong(tokens[3]);
+            if (TunnelSSH.open(listenPort, targetPort, timeout)){
+              if (Initializer.debug()){
+                Initializer.log("Tunnel opened from port "+listenPort+" to "+targetPort+(timeout>0?" with a timeout of "+(timeout/60000L)+" minutes.":"."));
+              }
+              return true;
+            }else{
+              c.sb.append("\n'opentunnel' encountered an error.");
+            }
+          }catch(NumberFormatException t){
+            c.sb.append("\n'opentunnel' failed to parse number from expected value.");
+          }
+        }else{
+          c.sb.append("\n'opentunnel' accepts either 2 or 3 arguments.");
+        }
+        return false;
+      }
+    });
+    commandMap.put("closetunnel", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==1){
+          TunnelSSH.closeTransient();
+          if (Initializer.debug()){
+            Initializer.log("All transient tunnels closed.");
+          }
+          return true;
+        }else if (tokens.length==2){
+          try{
+            TunnelSSH.closeTunnel(Integer.parseInt(tokens[1]));
+            if (Initializer.debug()){
+              Initializer.log("Tunnel on port "+tokens[1]+" has been closed.");
+            }
+            return true;
+          }catch(NumberFormatException e){
+            c.sb.append("\n'closetunnel' failed to parse number from expected value.");
+          }
+        }else{
+          c.sb.append("\n'closetunnel' accepts at most one argument.");
+        }
+        return false;
+      }
+    });
     commandMap.put("decrypt", new Cmd(){
       @Override public boolean exec(Command c, String[] tokens) throws Throwable {
         if (tokens.length==2){
@@ -314,6 +362,7 @@ public class Command {
               if (!value.equals(Config.connectionURL)){
                 Config.connectionURL = value;
                 Sync.licenseSynced = false;
+                TunnelSSH.close();
                 Initializer.status = "Initialized";
                 c.saveConfig = true;
               }

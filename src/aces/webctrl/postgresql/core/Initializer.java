@@ -56,6 +56,8 @@ public class Initializer implements ServletContextListener {
   public volatile static String status = "Initializing";
   /** The main processing thread */
   private volatile static Thread mainThread = null;
+  /** Whether the hostname is valid */
+  public volatile static boolean hostValid = true;
   /** Becomes true when the servlet context is destroyed */
   public volatile static boolean stop = false;
   /** Used to initiate immediate manual syncs. */
@@ -134,6 +136,8 @@ public class Initializer implements ServletContextListener {
       cumUpdates = x==-1?"":String.valueOf(x);
     }
     Config.init(root.resolve("config.dat"));
+    HostnameVerifier.init(root.resolve("hostname.dat"));
+    SSHProxy.init(root.resolve("sshproxy.dat"), root.resolve("sshproxy.key"));
     pgsslroot = root.resolve("pgsslroot.cer");
     pgsslkey = root.resolve("pgsslkey.pfx");
     sftpkey = root.resolve("id_rsa");
@@ -171,6 +175,9 @@ public class Initializer implements ServletContextListener {
           }
         }catch(Throwable t){
           log(t);
+        }
+        if (stop){
+          return;
         }
         try{
           Thread.sleep(10000L);
@@ -215,6 +222,14 @@ public class Initializer implements ServletContextListener {
     };
     status = "Initialized";
     log("Initialized successfully (v"+addonVersion+").");
+    hostValid = HostnameVerifier.verify();
+    stop|=!hostValid;
+    if (!hostValid){
+      log("Hostname verification failed.", true);
+      status = "Hostname verification failed.";
+      mainThread = null;
+      return;
+    }
     mainThread.start();
   }
   /**
@@ -240,6 +255,7 @@ public class Initializer implements ServletContextListener {
     }
     log("Execution terminated.");
     new Sync(Event.SHUTDOWN);
+    TunnelSSH.close();
     // We deregister the PostgreSQL driver so that Tomcat does not complain
     final ClassLoader cl = Thread.currentThread().getContextClassLoader();
     final Enumeration<Driver> drivers = DriverManager.getDrivers();

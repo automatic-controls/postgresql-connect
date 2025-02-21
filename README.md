@@ -25,11 +25,13 @@ WebCTRL is a trademark of Automated Logic Corporation.  Any other trademarks men
     - [Operator Blacklist Exceptions](#operator-blacklist-exceptions)
     - [Pending Commands](#pending-commands)
       - [Examples](#examples)
+    - [SSH Tunnels](#ssh-tunnels)
     - [Find Trends](#find-trends)
     - [Trend Mappings](#trend-mappings)
   - [Technical Information](#technical-information)
     - [Packaged Dependencies](#packaged-dependencies)
     - [Server ID Reset](#server-id-reset)
+    - [Hostname Matching](#hostname-matching)
 
 ## Feature Summary
 
@@ -50,7 +52,7 @@ When this WebCTRL add-on is installed and configured, it periodically communicat
   - Blacklist operators to delete them everywhere
   - Local operators (those that are not white or blacklisted) remain unaltered
   - WebCTRL's operator authentication provider is unaffected
-  - For security, operator passwords hashed and salted using the same algorithm WebCTRL uses
+  - For security, operator passwords are hashed and salted using the same algorithm WebCTRL uses
 - Add-on synchronization:
   - Synchronize a subnet of whitelisted add-ons between all connected servers
   - Deploy a new add-on everywhere in a single motion
@@ -61,6 +63,7 @@ When this WebCTRL add-on is installed and configured, it periodically communicat
   - Only whitelisted operators are permitted to manage the database
 - Remotely push out commands for servers to execute during their next sync
   - Among other things, this function can be used for automated bulk installation of WebCTRL patches
+- Configure reverse SSH tunnels for remote access of connected servers
 - Import or export a JSON document containing local operators
 - Optionally collect data from specific WebCTRL trends
 
@@ -141,9 +144,13 @@ Fill out all the required fields, click *Save Changes* and then click *Sync Now*
 
 When the add-on connects to the PostgreSQL database for the first time, it generates a unique server ID for itself. The *Reset ID* button can be used to delete the saved ID and generate a new one.
 
+If firewall restrictions limit PostgreSQL traffic, you can try using an SSH proxy server as an intermediary. In the below example, you would connect to `127.0.0.1:5433/database` after the proxy is set. The proxy is activated only when the add-on tries to sync, and then is deactivated afterwards. For security and simplicity, proxy settings cannot be viewed from a web browser after they are set.
+
+![](./resources/ssh_proxy.png)
+
 ### SFTP Server
 
-Whitelisted add-ons must reside on an SFTP server. [JSch](https://github.com/mwiede/jsch) is a third-party library this add-on uses to establish SFTP connections. If you want to lock down an SSH daemon to serve SFTP only, refer to the following example snippet from *sshd_config*.
+Whitelisted add-ons must reside on an SFTP server. [JSch](https://github.com/mwiede/jsch) is a third-party library this add-on uses to establish SSH and SFTP connections. If you want to lock down an SSH daemon to serve SFTP only, refer to the following example snippet from [*sshd_config*](https://man.openbsd.org/sshd_config).
 
 ```
 Match group sftp
@@ -151,6 +158,23 @@ ChrootDirectory /data/sftp
 X11Forwarding no
 AllowAgentForwarding no
 AllowTcpForwarding no
+ForceCommand internal-sftp
+```
+
+If you want to support reverse SSH tunnels and a proxy for connecting to the PostgreSQL database, you might want to configure something like the following instead:
+
+```
+Match group sftp
+ChrootDirectory /data/sftp
+GatewayPorts yes
+AllowTcpForwarding yes
+PermitOpen 127.0.0.1:5432
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+X11Forwarding no
+PermitTTY no
+ClientAliveInterval 60
+ClientAliveCountMax 3
 ForceCommand internal-sftp
 ```
 
@@ -171,7 +195,7 @@ In addition to the SFTP connection settings shown in the previous section, there
 | `debug` | `false` | When enabled, log messages will be more verbose. |
 | `log_expiration` | `60` | Specifies how many days to retain log messages in the database. |
 | `auto_update` | `true` | Specifies whether to attempt automatic updates for this add-on. |
-| `version` | `0.5.10` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
+| `version` | `0.5.12` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
 | `download_path` | `/webctrl/addons/PostgreSQL_Connect.addon` | When `auto_update` is enabled, this is the SFTP server path where the latest version add-on file will be retrieved. |
 | `license_directory` | `/webctrl/licenses` | Specifies an SFTP server directory path for where to store WebCTRL license files. |
 | `ftp_host` | `postgresql.domain.com` | SFTP server hostname or IP address. |
@@ -193,7 +217,7 @@ You cannot use this mechanism to automatically downgrade the add-on to an earlie
 
 ## Synchronizaton
 
-Now that your PostgreSQL database and SFTP server is configured, this section explains how to setup synchronization of operators, add-ons, and trends. We will go through each page accessible from the web UI.
+Now that your PostgreSQL database and SFTP server is configured, this section explains how to setup synchronization of operators, add-ons, reverse SSH tunnels, and trends. We will go through each page accessible from the web UI.
 
 ### Server List
 
@@ -204,7 +228,7 @@ This page lists all connected servers. If a server is decomissioned or permanent
 | ID | `1` | Internal ID which uniquely identifies the server within the PostgreSQL database. (Read-only) |
 | Name | `ACES Main Building` | User-friendly display name for the server. This defaults to the display name of the root of the Geo tree. |
 | WebCTRL Version | `8.5.002.20230323-123687` | Full version of the WebCTRL server. (Read-only) |
-| Add-On Version | `0.5.10` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
+| Add-On Version | `0.5.12` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
 | IP Address | `123.45.67.89` | External IP address of the server as viewed by the PostgreSQL database. (Read-only) |
 | Last Sync | `2024-12-02 14:05:32` | Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green; otherwise, the background is red. (Read-only) |
 | License | `WebCTRL Premium` | Click this field to download WebCTRL's license. (Read-only) |
@@ -290,7 +314,7 @@ Commands entered into this table are executed on servers during their next sync 
 | Ordering | `3` | When there are multiple command entries for a single server, this column specifies the ascending order in which commands are executed. |
 | Command | `notify "Hello!"` | The command(s) to execute. Multiple commands can be separated by newlines for fail-fast semantics. |
 
-Commands chained together using new-lines in a single entry are fail-fast, which means that execution is terminated immediately when an error is encountered. However, errors in one command entry do not affect other entries. Generally, commands are case-insensitive. Commands are tokenized using whitespace as delimiters. Double quotes can be used if a token must include whitespace. The caret character `^` can be used as an escape character. The local file path are specified, paths starting with `/` or `\` are treated as relative to WebCTRL's installation directory, and paths starting with `./` or `.\` are treated as relative to WebCTRL's active system directory. The two dots in `a/../b` go to the parent folder of `a`, so that `b` would be a sibling folder of `a`. Environment variables enclosed in percent signs (e.g, `%USERNAME%`) are expanded when present in local paths. Single-line comments are supported when a line is starts with `//`. The following commands are supported.
+Commands chained together using new-lines in a single entry are fail-fast, which means that execution is terminated immediately when an error is encountered. However, errors in one command entry do not affect other entries. Generally, commands are case-insensitive. Commands are tokenized using whitespace as delimiters. Double quotes can be used if a token must include whitespace. The caret character `^` can be used as an escape character. When local file paths are specified, paths starting with `/` or `\` are treated as relative to WebCTRL's installation directory, and paths starting with `./` or `.\` are treated as relative to WebCTRL's active system directory. The two dots in `a/../b` go to the parent folder of `a`, so that `b` would be a sibling folder of `a`. Environment variables enclosed in percent signs (e.g, `%USERNAME%`) are expanded when present in local paths. Single-line comments are supported when a line is starts with `//`. The following commands are supported.
 
 | Command | Description |
 | - | - |
@@ -318,6 +342,8 @@ Commands chained together using new-lines in a single entry are fail-fast, which
 | `canApplyUpdate <file_path>` | Asserts that WebCTRL is able to apply the specified *.update* patch file. If the update cannot be applied, then command execution is terminated. |
 | `!canApplyUpdate <file_path>` | Asserts that WebCTRL is not able to apply the specified *.update* patch file. If the update can be applied, then command execution is terminated. |
 | `updateDST` | Updates daylight savings dates stored in the WebCTRL database and marks controllers for a pending parameter download. |
+| `opentunnel <listen_port> <target_port> [timeout]` | Open a reverse SSH tunnel from the WebCTRL server to the SFTP server. `listen_port` is opened on the SFTP server, and connections to this port are forwarded to `target_port` on the WebCTRL server. After `timeout` expires, the tunnel will be closed at the next sync. If `timeout` is undefined, then the tunnel stays open until the next server reboot. |
+| `closetunnel [listen_port]` | Close a reverse SSH tunnel that was previously opened with the `opentunnel` command. If `listen_port` is unspecified, all tunnels are closed (excluding those configured in the [SSH Tunnels](#ssh-tunnels) section). |
 
 #### Examples
 
@@ -348,6 +374,14 @@ exists "/update_on_restart"
 log "Update did not install."
 rmdir "/update_on_restart"
 ```
+
+### SSH Tunnels
+
+This webpage permits configuration of persistent reverse SSH tunnels from the WebCTRL server to the SFTP server. The source port is opened on the SFTP server, and any connections to the source port are forwarded through the tunnel to the target port on the WebCTRL server. This can be used to get remote access to the webserver over port 80 or 443, for example. Or it can be used to access RDP with port 3389. Beware that shutting down the WebCTRL service over RDP will terminate the RDP connection because WebCTRL itself is functioning as the VPN tunnel provider. So I would suggest not tunneling RDP in this manner unless all users understand the risks.
+
+![](./resources/ssh_tunnels.png)
+
+Persistent tunnels are checked during each sync. If you reboot the SFTP server and interrupt the tunnel's connection, you will have to wait until the next sync for the tunnel to reform. Therefore, it is suggested to perform maintenance on the SFTP server only when users are unlikely to be utilizing the tunnels.
 
 ### Find Trends
 
@@ -418,9 +452,13 @@ CREATE INDEX webctrl_trend_data_time ON webctrl.trend_data ("time" DESC);
 ### Packaged Dependencies
 
 - [PostgreSQL JDBC 42.7.5](https://jdbc.postgresql.org/) - Used to connect to PostgreSQL databases.
-- [JSch 0.2.22](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
+- [JSch 0.2.23](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
 - [JSON-java 20250107](https://github.com/stleary/JSON-java) - Used to encode and decode JSON data.
 
 ### Server ID Reset
 
 There is a *Reset ID* button on the add-on's main page. This will make the add-on forget its current server ID and re-register with the database at the start of the next sync. This server ID is the primary mechanism for how the database separates out data corresponding to different WebCTRL servers. If you ever need to force the add-on to choose a particular ID, you can craft and submit a particular HTTP request to the WebCTRL server. For example, *https://localhost/PostgreSQL_Connect/index?type=resetNow&newID=3* will force the ID of the WebCTRL server accessible at *localhost* to 3.
+
+### Hostname Matching
+
+If a technician copies a WebCTRL system folder over to another computer, then the configuration file for this add-on is also copied. When the other computer starts up, this add-on will try to connect to the PostgreSQL database using the same ID as the original computer. This is a problem. There should not be multiple computers connecting with the same ID. In an attempt to resolve this issue, the add-on stores the hostname of the computer alongside the database ID. When initializing, if the hostname stored in the config file does not match the hostname of the computer, the add-on will become inert. Therefore, if you ever need to change the hostname of a WebCTRL server, you should delete `./programdata/systems/test_system/webapp_data/PostgreSQL_Connect/private/hostname.dat` and restart this add-on.

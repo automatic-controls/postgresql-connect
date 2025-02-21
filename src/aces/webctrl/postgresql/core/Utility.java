@@ -19,6 +19,16 @@ public class Utility {
   private final static Pattern lineEnding = Pattern.compile("\\r?+\\n");
   private final static Pattern formatter = Pattern.compile("\\$(\\d)");
   /**
+   * @return the hostname of the local machine.
+   */
+  public static String getHostName(){
+    try{
+      return java.net.InetAddress.getLocalHost().getHostName();
+    }catch(Throwable t){
+      return "localhost";
+    }
+  }
+  /**
    * Split a string into tokens.
    */
   public static String[] tokenize(String s){

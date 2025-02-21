@@ -33,8 +33,8 @@ webserver-api-9.0.002
 webui-9.0.002
 
 Packaged Dependencies:
-jsch-0.2.22-sources
-jsch-0.2.22
+jsch-0.2.23-sources
+jsch-0.2.23
 json-20250107-sources
 json-20250107
 postgresql-42.7.5-sources

@@ -1,0 +1,218 @@
+<!--
+  BSD 3-Clause License
+  Copyright (c) 2025, Automatic Controls Equipment Systems, Inc.
+  Contributors: Cameron Vogt (@cvogt729)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>
+      PostgreSQL Connector
+    </title>
+    <link rel="stylesheet" type="text/css" href="../../../../../root/webapp/main.css"/>
+    <script>
+      function registerChange(){
+        if (!changes){
+          changes = true;
+          mainTitle.innerText = "* SSH Proxy *";
+          document.title = mainTitle.innerText;
+        }
+      }
+      function unregisterChange(){
+        if (changes){
+          changes = false;
+          mainTitle.innerText = "SSH Proxy";
+          document.title = mainTitle.innerText;
+        }
+      }
+      function checkSave(){
+        if (changes){
+          alert("Please save changes before continuing.");
+          return false;
+        }else{
+          return true;
+        }
+      }
+      function resize(input){
+        const styles = window.getComputedStyle(input);
+        hiddenSpan.style.fontFamily = styles.fontFamily;
+        hiddenSpan.style.fontSize = styles.fontSize;
+        hiddenSpan.style.fontStyle = styles.fontStyle;
+        hiddenSpan.style.fontWeight = styles.fontWeight;
+        hiddenSpan.style.letterSpacing = styles.letterSpacing;
+        hiddenSpan.style.textTransform = styles.textTransform;
+        hiddenSpan.style.borderLeftWidth = styles.borderLeftWidth;
+        hiddenSpan.style.borderRightWidth = styles.borderRightWidth;
+        hiddenSpan.style.paddingLeft = styles.paddingLeft;
+        hiddenSpan.style.paddingRight = styles.paddingRight;
+        hiddenSpan.innerText = input.value;
+        input.style.width = hiddenSpan.offsetWidth+"px";
+        if (input.tagName=="TEXTAREA"){
+          input.style.height = "1px";
+          input.style.height = input.scrollHeight+"px";
+        }
+      }
+      function validateInt(field,max){
+        var s = field.value;
+        if (s.length>0){
+          s = s.replaceAll(/\D/g,"");
+          if (s.length>0){
+            if (s.length>15){
+              s = s.substring(0,15);
+            }
+            s = parseInt(s);
+            s = Math.min(s,max);
+            field.value = s.toString();
+          }else{
+            field.value = "";
+          }
+        }
+      }
+      function save(){
+        saveButton.disabled = true;
+        const req = new XMLHttpRequest();
+        req.open("POST","__PREFIX__/Proxy?type=save");
+        req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+        req.timeout = 5000;
+        req.onreadystatechange = function(){
+          if (this.readyState===4){
+            if (this.status===200){
+              unregisterChange();
+              statusBox.innerText = "Changes saved.";
+            }else if (this.status==0){
+              statusBox.innerText = "Request timed out.";
+            }else{
+              statusBox.innerText = "HTTP Error "+this.status;
+            }
+            saveButton.disabled = false;
+          }
+        };
+        req.send(
+          "host="+encodeURIComponent(hostField.value)+
+          "&port="+encodeURIComponent(portField.value)+
+          "&username="+encodeURIComponent(usernameField.value)+
+          "&knownhosts="+encodeURIComponent(knownhostsField.value.replaceAll('\r',''))+
+          "&key="+encodeURIComponent(keyField.value.replaceAll('\r',''))+
+          "&src_port="+encodeURIComponent(srcPortField.value)+
+          "&dst_host="+encodeURIComponent(dstHostField.value)+
+          "&dst_port="+encodeURIComponent(dstPortField.value)
+        );
+      }
+      function wipeProxy(){
+        if (confirm("Are you sure you want to delete this proxy?")){
+          deleteButton.disabled = true;
+          const req = new XMLHttpRequest();
+          req.open("POST","__PREFIX__/Proxy?type=delete");
+          req.setRequestHeader("content-type", "application/x-www-form-urlencoded");
+          req.timeout = 5000;
+          req.onreadystatechange = function(){
+            if (this.readyState===4){
+              if (this.status===200){
+                hostField.value = "";
+                portField.value = "";
+                usernameField.value = "";
+                knownhostsField.value = "";
+                keyField.value = "";
+                srcPortField.value = "";
+                dstHostField.value = "";
+                dstPortField.value = "";
+                resize(hostField);
+                resize(portField);
+                resize(usernameField);
+                resize(knownhostsField);
+                resize(keyField);
+                resize(srcPortField);
+                resize(dstHostField);
+                resize(dstPortField);
+                unregisterChange();
+                statusBox.innerText = "Proxy deleted.";
+              }else if (this.status==0){
+                statusBox.innerText = "Request timed out.";
+              }else{
+                statusBox.innerText = "HTTP Error "+this.status;
+              }
+              deleteButton.disabled = false;
+            }
+          };
+          req.send();
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div style="text-align:center">
+      <h1 id="mainTitle">SSH Proxy</h1>
+      <div class="divGrouping">
+        <label>Status:</label>
+        <span id="statusBox" style="color:red">Retrieving...</span>
+      </div>
+      <br>
+      <div class="divGrouping" title="The IP address or hostname of the SSH server to connect to.">
+        <label for="hostField">Host:</label>
+        <input class="c" type="text" id="hostField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping" title="The port number of the SSH server to connect to. Port 22 is typical.">
+        <label for="portField">Port:</label>
+        <input class="c" type="text" id="portField" oninput="validateInt(this,65535);resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping" title="The username to authenticate with on the SSH server.">
+        <label for="usernameField">Username:</label>
+        <input class="c" type="text" id="usernameField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping" title="The public key of the SSH server to verify its identity. Please use ssh-keyscan to obtain this value.">
+        <label for="knownhostsField"><a href="https://help.salesforce.com/s/articleView?id=001120703&type=1" target="_blank" style="all:inherit">Known Hosts:</a></label>
+        <textarea id="knownhostsField" oninput="resize(this);registerChange()" style="resize:none;text-align:left;margin-bottom:-0.5em" wrap="off" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+      </div>
+      <br>
+      <div class="divGrouping" title="The private key to authenticate with on the SSH server. Please use OpenSSH private key format.">
+        <label for="keyField">Private Key:</label>
+        <textarea id="keyField" oninput="resize(this);registerChange()" style="resize:none;text-align:left;margin-bottom:-0.5em" wrap="off" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+      </div>
+      <br>
+      <div class="divGrouping" title="The port to use for the local SSH tunnel. This is opened on the WebCTRL server, and incoming connections are forwarded through the SSH tunnel to the destination host and port.">
+        <label for="srcPortField">Source Port:</label>
+        <input class="c" type="text" id="srcPortField" oninput="validateInt(this,65535);resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping" title="The destination IP address or hostname to forward connections to as viewed by the SSH server.">
+        <label for="dstHostField">Destination Host:</label>
+        <input class="c" type="text" id="dstHostField" oninput="resize(this);registerChange()">
+      </div>
+      <br>
+      <div class="divGrouping" title="The port to target on the destination host for forwarded connections.">
+        <label for="dstPortField">Destination Port:</label>
+        <input class="c" type="text" id="dstPortField" oninput="validateInt(this,65535);resize(this);registerChange()">
+      </div>
+      <br><br>
+      <button class="e" id="saveButton" onclick="save()">Save Changes</button>
+      <button type="button" class="e" onclick="prompt=false;window.location.reload()">Discard Changes</button>
+      <button class="e" id="deleteButton" onclick="wipeProxy()">Delete Proxy</button>
+      <a class="e" href="__DOCUMENTATION__" target="_blank">Documentation</a>
+      <br><br>
+      <a class="e" href="__PREFIX__/index">Back to Connection Parameters</a>
+      <span id="hiddenSpan" style="min-width:3em;color:black;display:inline-block;position:absolute;left:-100000px;white-space:pre"></span>
+    </div>
+    <script>
+      var changes;
+      var prompt = true;
+      statusBox.innerText = "__STATUS__";
+      resize(hostField);
+      resize(portField);
+      resize(usernameField);
+      resize(knownhostsField);
+      resize(keyField);
+      resize(srcPortField);
+      resize(dstHostField);
+      resize(dstPortField);
+      unregisterChange();
+      window.onbeforeunload = ()=>{
+        if (prompt && changes){
+          return "Changes remain unsaved. Are you sure you want to leave?";
+        }
+      };
+    </script>
+  </body>
+</html>

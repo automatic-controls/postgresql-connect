@@ -66,10 +66,12 @@ public class MainPage extends ServletBase {
           }
           Config.cron.set(Utility.coalesce(req.getParameter("cron"), ""));
           Config.save();
-          if (!connectionURL.equals(Config.connectionURL) || !username.equals(Config.username) || !password.equals(Config.password) || !keystorePassword.equals(Config.keystorePassword)){
+          final boolean newURL = !connectionURL.equals(Config.connectionURL);
+          if (newURL || !username.equals(Config.username) || !password.equals(Config.password) || !keystorePassword.equals(Config.keystorePassword)){
             Initializer.status = "Initialized";
-            if (!connectionURL.equals(Config.connectionURL)){
+            if (newURL){
               Sync.licenseSynced = false;
+              TunnelSSH.close();
             }
           }
           // Note - We do not "break" at the end of this case. Proceed to the refresh case.

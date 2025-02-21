@@ -20,6 +20,15 @@
   </servlet-mapping>
 
   <servlet>
+    <servlet-name>ProxyPage</servlet-name>
+    <servlet-class>aces.webctrl.postgresql.web.ProxyPage</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>ProxyPage</servlet-name>
+    <url-pattern>/Proxy</url-pattern>
+  </servlet-mapping>
+
+  <servlet>
     <servlet-name>TableEditorPage</servlet-name>
     <servlet-class>aces.webctrl.postgresql.web.TableEditorPage</servlet-class>
   </servlet>

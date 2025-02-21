@@ -204,6 +204,21 @@ CREATE TABLE webctrl.pending_commands (
 );
 CREATE INDEX webctrl_pending_commands_ordering ON webctrl.pending_commands ("server_id" ASC, "ordering" ASC);
 
+-- Rows in this table represent an SSH tunnel to a WebCTRL server
+CREATE TABLE webctrl.tunnels (
+  -- Unique id to identify each tunnel
+  "id" SERIAL PRIMARY KEY,
+  -- Corresponds to the id column of webctrl.servers
+  "server_id" INTEGER NOT NULL,
+  -- The listening port to open on the PostgreSQL database server
+  "src_port" INTEGER,
+  -- The destination port to forward to on the WebCTRL server
+  "dst_port" INTEGER,
+  -- A brief description of the tunnel's purpose
+  "desc" TEXT
+);
+CREATE INDEX webctrl_tunnels_id ON webctrl.tunnels ("server_id" ASC);
+
 -- Defines trend sources to collect data from
 CREATE TABLE webctrl.trend_mappings (
   -- Unique id to identify each trend mapping
@@ -309,6 +324,21 @@ CREATE OR REPLACE FUNCTION webctrl.webctrl_clean() RETURNS TRIGGER AS $$
     ) "x";
     IF "rowcount" = 0 THEN
       ALTER SEQUENCE webctrl.pending_commands_id_seq RESTART;
+    END IF;
+    WITH "bad" AS (
+      SELECT "a"."server_id" FROM (
+        SELECT DISTINCT "server_id" FROM webctrl.tunnels
+      ) "a" LEFT JOIN webctrl.servers "b"
+      ON "a"."server_id" = "b"."id" WHERE "b"."id" IS NULL
+    ) DELETE FROM webctrl.tunnels "a" USING "bad" "b"
+    WHERE "a"."server_id" = "b"."server_id";
+    SELECT
+      COUNT(*) INTO "rowcount"
+    FROM (
+        SELECT * FROM webctrl.tunnels LIMIT 1
+    ) "x";
+    IF "rowcount" = 0 THEN
+      ALTER SEQUENCE webctrl.tunnels_id_seq RESTART;
     END IF;
     RETURN NULL;
   END;
@@ -465,6 +495,9 @@ GRANT ALL ON webctrl.trend_data TO webctrl;
 GRANT ALL ON webctrl.pending_commands TO webctrl;
 GRANT ALL ON webctrl.pending_commands_id_seq TO webctrl;
 ALTER TABLE webctrl.pending_commands OWNER TO webctrl;
+GRANT ALL ON webctrl.tunnels TO webctrl;
+GRANT ALL ON webctrl.tunnels_id_seq TO webctrl;
+ALTER TABLE webctrl.tunnels OWNER TO webctrl;
 --*/
 
 -- Use this query to drop all webctrl tables
@@ -482,6 +515,8 @@ ALTER SEQUENCE webctrl.trend_mappings_id_seq RESTART;
 DELETE FROM webctrl.trend_data;
 DELETE FROM webctrl.pending_commands;
 ALTER SEQUENCE webctrl.pending_commands_id_seq RESTART;
+DELETE FROM webcrtl.tunnels;
+ALTER SEQUENCE webctrl.tunnels_id_seq RESTART;
 --*/
 
 -- Insert administrators from your WebCTRL server into webctrl.operator_whitelist
