@@ -11,6 +11,24 @@ public class TunnelSSH {
   private volatile static Session session = null;
   public final static HashMap<Integer, Tunnel> tunnels = new HashMap<>();
   public final static HashMap<Integer, Tunnel> persistentTunnels = new HashMap<>();
+  public synchronized static void listTunnels(StringBuilder sb){
+    if (tunnels.isEmpty() && persistentTunnels.isEmpty()){
+      sb.append("No tunnels are currently open.");
+    }else{
+      if (!tunnels.isEmpty()){
+        sb.append("Transient Tunnels:\n");
+        for (Tunnel tun : tunnels.values()){
+          sb.append("  Port ").append(tun.listenPort).append(" -> ").append(tun.targetPort).append(tun.expiry>0?" (expires in "+(tun.expiry-System.currentTimeMillis())/1000+" seconds)":"").append("\n");
+        }
+      }
+      if (!persistentTunnels.isEmpty()){
+        sb.append("Persistent Tunnels:\n");
+        for (Tunnel tun : persistentTunnels.values()){
+          sb.append("  Port ").append(tun.listenPort).append(" -> ").append(tun.targetPort).append("\n");
+        }
+      }
+    }
+  }
   public synchronized static void checkTunnelExpiry(){
     if (tunnels.isEmpty() || !isOpen()){
       return;

@@ -840,7 +840,7 @@ public class Sync {
                     con.commit();
                     boolean cont = false;
                     for (Command c: commands){
-                      if (!c.execute() && c.hasReboot()){
+                      if (!c.execute(true) && c.hasReboot()){
                         cont = true;
                       }
                     }

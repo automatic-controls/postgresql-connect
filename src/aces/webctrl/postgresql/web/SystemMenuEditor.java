@@ -1,11 +1,11 @@
 package aces.webctrl.postgresql.web;
-import aces.webctrl.postgresql.core.*;
+//import aces.webctrl.postgresql.core.*;
 import com.controlj.green.addonsupport.access.*;
 import com.controlj.green.addonsupport.web.menus.*;
 public class SystemMenuEditor implements SystemMenuProvider {
-  private volatile static String JS = null;
+  //private volatile static String JS = null;
   @Override public void updateMenu(Operator op, Menu menu){
-    try{
+    /*try{
       final String username = op.getLoginName().toLowerCase();
       if (Sync.lastGeneralSyncSuccessful && Sync.operatorWhitelist.containsKey(username)){
         if (JS==null){
@@ -35,6 +35,6 @@ public class SystemMenuEditor implements SystemMenuProvider {
       }
     }catch(Throwable t){
       Initializer.log(t);
-    }
+    }*/
   }
 }

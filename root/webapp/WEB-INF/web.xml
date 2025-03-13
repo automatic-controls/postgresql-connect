@@ -38,6 +38,15 @@
   </servlet-mapping>
 
   <servlet>
+    <servlet-name>TerminalPage</servlet-name>
+    <servlet-class>aces.webctrl.postgresql.web.TerminalPage</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>TerminalPage</servlet-name>
+    <url-pattern>/Terminal</url-pattern>
+  </servlet-mapping>
+
+  <servlet>
     <servlet-name>InstallAddonPage</servlet-name>
     <servlet-class>aces.webctrl.postgresql.web.InstallAddonPage</servlet-class>
   </servlet>

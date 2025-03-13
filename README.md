@@ -23,6 +23,7 @@ WebCTRL is a trademark of Automated Logic Corporation.  Any other trademarks men
     - [Reverse Operator Sync](#reverse-operator-sync)
     - [Operator Blacklist](#operator-blacklist)
     - [Operator Blacklist Exceptions](#operator-blacklist-exceptions)
+    - [CLI Terminal](#cli-terminal)
     - [Pending Commands](#pending-commands)
       - [Examples](#examples)
     - [SSH Tunnels](#ssh-tunnels)
@@ -195,7 +196,7 @@ In addition to the SFTP connection settings shown in the previous section, there
 | `debug` | `false` | When enabled, log messages will be more verbose. |
 | `log_expiration` | `60` | Specifies how many days to retain log messages in the database. |
 | `auto_update` | `true` | Specifies whether to attempt automatic updates for this add-on. |
-| `version` | `0.5.12` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
+| `version` | `0.5.13` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
 | `download_path` | `/webctrl/addons/PostgreSQL_Connect.addon` | When `auto_update` is enabled, this is the SFTP server path where the latest version add-on file will be retrieved. |
 | `license_directory` | `/webctrl/licenses` | Specifies an SFTP server directory path for where to store WebCTRL license files. |
 | `ftp_host` | `postgresql.domain.com` | SFTP server hostname or IP address. |
@@ -228,7 +229,7 @@ This page lists all connected servers. If a server is decomissioned or permanent
 | ID | `1` | Internal ID which uniquely identifies the server within the PostgreSQL database. (Read-only) |
 | Name | `ACES Main Building` | User-friendly display name for the server. This defaults to the display name of the root of the Geo tree. |
 | WebCTRL Version | `8.5.002.20230323-123687` | Full version of the WebCTRL server. (Read-only) |
-| Add-On Version | `0.5.12` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
+| Add-On Version | `0.5.13` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
 | IP Address | `123.45.67.89` | External IP address of the server as viewed by the PostgreSQL database. (Read-only) |
 | Last Sync | `2024-12-02 14:05:32` | Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green; otherwise, the background is red. (Read-only) |
 | License | `WebCTRL Premium` | Click this field to download WebCTRL's license. (Read-only) |
@@ -302,6 +303,12 @@ Exceptions entered into this table through the add-on's configuration pages affe
 | - | - | - |
 | Username | `aces` | Specifies a blacklisted username which should be allowed to exist on this WebCTRL server. |
 
+### CLI Terminal
+
+This webpage allows you to directly run CLI commands on the WebCTRL server. Supported commands are shown in the next section. You may use **SHIFT+ENTER** for submitting multiple commands at once. The up and down arrow keys may be used to navigate command history.
+
+![](./resources/cli_example.png)
+
 ### Pending Commands
 
 Commands entered into this table are executed on servers during their next sync interval.
@@ -319,6 +326,7 @@ Commands chained together using new-lines in a single entry are fail-fast, which
 | Command | Description |
 | - | - |
 | `duplicate [id1,id2,...]` | When a new pending command is created, and `duplicate` is on the first line, the command is copied to all servers with the specified IDs. If no server IDs are specified, then the command is copied to all servers. You can use `%ID%` or `%NAME%` anywhere in the command after the `duplicate` statement, and it will be replaced with the server ID or name of each server the command is copied to. |
+| `exec <timeout> <exit_code> <args>...` | Invokes a system shell command. If the command does not complete within `timeout` milliseconds, then it is forcibly terminated. The environment's current directory for this command is set to the active WebCTRL system directory. Arguments are passed to [ProcessBuilder](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/ProcessBuilder.html). For certain command structures, you may have to prefix with `/bin/bash -c`, `cmd /c`, or `powershell -NoLogo -NonInteractive -NoProfile -Command`. This command is considered to have succeeded when the process's exit code is equal to `exit_code`. You can specify multiple allowed exit codes by delimiting them with commas. To accept all exit codes, specify `*`. |
 | `about` | Logs a bunch of information relevant to the WebCTRL server. This functions similarly to the `about` manual command. |
 | `log <message>` | Writes a message to the add-on's log file. |
 | `notify <message>` | Functions identically to the `notify` manual command. Logged in operators get a popup message in their web browsers. |
@@ -334,6 +342,7 @@ Commands chained together using new-lines in a single entry are fail-fast, which
 | `cp <src_path> <dst_path>` | Copies a file on the local file system of the WebCTRL server. |
 | `mv <src_path> <dst_path>` | Moves a file or directory on the local file system of the WebCTRL server. Try using `cp` and `rmdir` to move a folder if you encounter errors with this command; this command generally only works when the source and destination are on the same drive. |
 | `cat <file_path>` | Logs the contents of the specified file. |
+| `ls <folder_path>` | Logs a list of folders and files inside the specified directory. |
 | `exists <path>` | Asserts that the specified file or directory exists. If non-existent, then command execution is terminated. |
 | `!exists <path>` | Asserts that the specified file or directory does not exists. If it exists, then command execution is terminated. |
 | `regex <file_path> <find> [replace]` | If a replacement string is not given, then this commands logs all matches of the regular expression in the specified file. If a replacement string is given, then this command edits the specified file by replacing all matches of the regular expression. The file's contents are assumed to be UTF-8 encoded text. The [MULTILINE](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html#MULTILINE) and [DOTALL](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html#DOTALL) flags are used by default. |
@@ -344,6 +353,7 @@ Commands chained together using new-lines in a single entry are fail-fast, which
 | `updateDST` | Updates daylight savings dates stored in the WebCTRL database and marks controllers for a pending parameter download. |
 | `opentunnel <listen_port> <target_port> [timeout]` | Open a reverse SSH tunnel from the WebCTRL server to the SFTP server. `listen_port` is opened on the SFTP server, and connections to this port are forwarded to `target_port` on the WebCTRL server. After `timeout` expires, the tunnel will be closed at the next sync. If `timeout` is undefined, then the tunnel stays open until the next server reboot. |
 | `closetunnel [listen_port]` | Close a reverse SSH tunnel that was previously opened with the `opentunnel` command. If `listen_port` is unspecified, all tunnels are closed (excluding those configured in the [SSH Tunnels](#ssh-tunnels) section). |
+| `listtunnels` | Logs a list of all open SSH tunnels. |
 
 #### Examples
 
@@ -373,6 +383,8 @@ duplicate 14,50,42,55,36,32
 exists "/update_on_restart"
 log "Update did not install."
 rmdir "/update_on_restart"
+
+exec 1000 * /bin/bash -c "lsb_release -a; echo $?"
 ```
 
 ### SSH Tunnels
@@ -452,7 +464,7 @@ CREATE INDEX webctrl_trend_data_time ON webctrl.trend_data ("time" DESC);
 ### Packaged Dependencies
 
 - [PostgreSQL JDBC 42.7.5](https://jdbc.postgresql.org/) - Used to connect to PostgreSQL databases.
-- [JSch 0.2.23](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
+- [JSch 0.2.24](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
 - [JSON-java 20250107](https://github.com/stleary/JSON-java) - Used to encode and decode JSON data.
 
 ### Server ID Reset

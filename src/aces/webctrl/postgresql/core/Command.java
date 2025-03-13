@@ -1,6 +1,8 @@
 package aces.webctrl.postgresql.core;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.*;
+import java.util.stream.*;
 import java.io.*;
 import java.nio.*;
 import java.nio.file.*;
@@ -12,6 +14,104 @@ import com.controlj.launcher.ConfigurationDecorator;
 public class Command {
   private final static HashMap<String,Cmd> commandMap = new HashMap<>();
   static {
+    commandMap.put("exec", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length>2){
+          long timeout;
+          try{
+            timeout = Long.parseLong(tokens[1]);
+            if (timeout<0){
+              c.sb.append("\n'exec' timeout must be a positive number.");
+              return false;
+            }
+          }catch(NumberFormatException e){
+            c.sb.append("\n'exec' failed to parse number from expected value.");
+            return false;
+          }
+          HashSet<Integer> allowedExitCodes = new HashSet<>();
+          if (tokens[2].equals("*")){
+            allowedExitCodes = null;
+          }else{
+            for (String code: tokens[2].split(",")){
+              try{
+                allowedExitCodes.add(Integer.parseInt(code.trim()));
+              }catch(NumberFormatException e){}
+            }
+          }
+          final String[] cmd = new String[tokens.length-3];
+          System.arraycopy(tokens, 3, cmd, 0, cmd.length);
+          final ProcessBuilder pb = new ProcessBuilder(cmd);
+          pb.directory(Initializer.systemDir.toFile());
+          pb.redirectErrorStream(true);
+          final Process p = pb.start();
+          try{
+            c.sb.append('\n');
+            final long lim = System.currentTimeMillis()+timeout;
+            try (
+              final BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            ){
+              int ch = 0;
+              do {
+                if (Initializer.stop){
+                  break;
+                }
+                if (p.isAlive()){
+                  while (reader.ready()){
+                    ch = reader.read();
+                    if (ch==-1){
+                      break;
+                    }
+                    c.sb.append((char)ch);
+                  }
+                  if (ch==-1){
+                    break;
+                  }
+                  Thread.sleep(500L);
+                }else{
+                  while (reader.ready()){
+                    ch = reader.read();
+                    if (ch==-1){
+                      break;
+                    }
+                    c.sb.append((char)ch);
+                  }
+                  break;
+                }
+              } while (System.currentTimeMillis()<lim);
+            }
+          }finally{
+            if (p.isAlive()){
+              try{
+                p.destroy();
+                if (!p.waitFor(2000L, TimeUnit.MILLISECONDS)){
+                  p.destroyForcibly();
+                  p.waitFor(2000L, TimeUnit.MILLISECONDS);
+                }
+              }catch(InterruptedException e){
+                p.destroyForcibly();
+              }
+              if (Initializer.stop){
+                c.sb.append("\nCommand was terminated due to system shutdown.");
+              }else{
+                c.sb.append("\nCommand timed out.");
+              }
+              return false;
+            }
+          }
+          try{
+            int code = p.exitValue();
+            c.lastExecExitCode = code;
+            return allowedExitCodes==null || allowedExitCodes.contains(code);
+          }catch(Throwable t){
+            c.sb.append("\n'exec' failed to retrieve exit value.");
+            return false;
+          }
+        }else{
+          c.sb.append("\n'exec' requires at least three arguments.");
+          return false;
+        }
+      }
+    });
     commandMap.put("reboot", new Cmd(){
       @Override public boolean exec(Command c, String[] tokens) throws Throwable {
         if (tokens.length==1){
@@ -48,6 +148,18 @@ public class Command {
           return true;
         }else{
           c.sb.append("\n'about' does not accept any arguments.");
+          return false;
+        }
+      }
+    });
+    commandMap.put("listtunnels", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==1){
+          c.sb.append('\n');
+          TunnelSSH.listTunnels(c.sb);
+          return true;
+        }else{
+          c.sb.append("\n'listtunnels' does not accept any arguments.");
           return false;
         }
       }
@@ -231,6 +343,63 @@ public class Command {
           }
         }else{
           c.sb.append("\n'rmdir' accepts exactly one argument.");
+        }
+        return false;
+      }
+    });
+    commandMap.put("ls", new Cmd(){
+      @Override public boolean exec(Command c, String[] tokens) throws Throwable {
+        if (tokens.length==2){
+          try{
+            final Path p = HelperAPI.resolve(tokens[1]);
+            if (Files.exists(p)){
+              if (Files.isDirectory(p)){
+                TreeSet<String> files = new TreeSet<>();
+                TreeSet<String> folders = new TreeSet<>();
+                try(
+                  Stream<Path> s = Files.list(p);
+                ){
+                  Iterator<Path> i = s.iterator();
+                  Path pp;
+                  String name;
+                  while (i.hasNext()){
+                    pp = i.next();
+                    name = pp.getFileName().toString();
+                    if (Files.isDirectory(pp)){
+                      folders.add(name);
+                    }else{
+                      files.add(name);
+                    }
+                  }
+                }
+                if (!folders.isEmpty()){
+                  c.sb.append("\nFolders:");
+                  for (String f: folders){
+                    c.sb.append("\n  ").append(f);
+                  }
+                }
+                if (!files.isEmpty()){
+                  c.sb.append("\nFiles:");
+                  for (String f: files){
+                    c.sb.append("\n  ").append(f);
+                  }
+                }
+                return true;
+              }else{
+                c.sb.append("\n'ls' cannot be used on files.");
+              }
+            }else{
+              c.sb.append("\n'ls' could not resolve path.");
+            }
+          }catch(InvalidPathException t){
+            c.sb.append("\n'ls' could not resolve path.");
+            Initializer.log(t);
+          }catch(IOException t){
+            c.sb.append("\n'ls' encountered an error.");
+            Initializer.log(t);
+          }
+        }else{
+          c.sb.append("\n'ls' accepts exactly one argument.");
         }
         return false;
       }
@@ -592,6 +761,7 @@ public class Command {
   private volatile StringBuilder sb;
   private volatile boolean saveConfig = false;
   private volatile ConnectSFTP sftp = null;
+  public volatile int lastExecExitCode = 0;
   public Command(int id, String cmd){
     this.id = id;
     this.cmd = cmd;
@@ -618,8 +788,10 @@ public class Command {
     return reboot;
   }
   private final static Pattern passwordKiller = Pattern.compile("^(set\\s++(?:keystore)?+password\\s++).*?$", Pattern.MULTILINE|Pattern.CASE_INSENSITIVE);
-  public boolean execute(){
-    Initializer.log("Executing Command:\n"+passwordKiller.matcher(cmd).replaceAll("$1*"));
+  public boolean execute(boolean log){
+    if (log){
+      Initializer.log("Executing Command:\n"+passwordKiller.matcher(cmd).replaceAll("$1*"));
+    }
     sb = new StringBuilder();
     try{
       try{
@@ -630,10 +802,12 @@ public class Command {
         }
         return true;
       }finally{
-        if (sb.length()>0){
-          Initializer.log("Command Output:"+sb.toString());
+        if (log){
+          if (sb.length()>0){
+            Initializer.log("Command Output:"+sb.toString());
+          }
+          sb = null;
         }
-        sb = null;
         if (saveConfig){
           Config.save();
         }
@@ -653,6 +827,9 @@ public class Command {
       return false;
     }
     return command.exec(this, tokens);
+  }
+  public StringBuilder getStringBuilder(){
+    return sb;
   }
   private static interface Cmd {
     public boolean exec(Command c, String[] tokens) throws Throwable;

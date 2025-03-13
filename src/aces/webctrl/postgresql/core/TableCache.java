@@ -26,7 +26,7 @@ public class TableCache {
       x.keyColumn = "id";
       x.otherColumns = "\"name\",\"notes\"";
       x.query = "SELECT \"id\", \"name\", \"version\", \"addon_version\", host(\"ip_address\"), "+
-        "'background-color:'|| CASE WHEN \"last_sync\"+(INTERVAL '1 days')>CURRENT_TIMESTAMP THEN 'darkgreen' ELSE 'darkred' END ||'|'||DATE_TRUNC('seconds', \"last_sync\" AT TIME ZONE '"+timezone+"')::TEXT, "+
+        "'background-color:'|| CASE WHEN \"last_sync\"+(INTERVAL '4 HOURS')>CURRENT_TIMESTAMP THEN 'darkgreen' ELSE 'darkred' END ||'|'||DATE_TRUNC('seconds', \"last_sync\" AT TIME ZONE '"+timezone+"')::TEXT, "+
         "'<a target=\"_blank\" href=\""+Initializer.getPrefix()+"DownloadLicense?id='||\"id\"||'\" download=\"license-'||\"id\"||'.properties\">'||REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\"product_name\",'&','&amp;'),'\"','&quot;'),'''','&apos;'),'<','&lt;'),'>','&gt;')||'</a>', "+
         "\"cum_updates\", \"notes\" FROM webctrl.servers ORDER BY STRING_TO_ARRAY(REGEXP_REPLACE(REPLACE(\"version\",'-','.'),'[^\\d\\.]','','g'), '.')::int[] DESC, \"cum_updates\" DESC, \"name\" ASC;";
       x.conversion = basic;
