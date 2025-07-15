@@ -34,10 +34,12 @@ public class OperatorData implements Comparable<OperatorData> {
   public void write(OperatorLink link, CoreNode op, boolean admin) throws CoreNotFoundException, CoreDatabaseException, CJDataValueException {
     op.setAttribute(CoreNode.KEY, username);
     op.setAttribute(NodeAttribute.lookup(CoreNode.DISPLAY_NAME, "en", true), display_name);
-    link.setRawPassword(op, password, false);
+    link.setRawPassword(op, password, false, false);
     final CoreNode pref = op.getChild("preferences");
     pref.getChild("lvl5_auto_collapse").setBooleanAttribute(CoreNode.VALUE, lvl5_auto_collapse);
-    pref.getChild("lvl5_auto_logout").setIntAttribute(CoreNode.VALUE, lvl5_auto_logout);
+    if (!Sync.excludeAutoLogoutTime){
+      pref.getChild("lvl5_auto_logout").setIntAttribute(CoreNode.VALUE, lvl5_auto_logout);
+    }
     if (admin){
       link.assignAdminRole(op);
     }
@@ -48,7 +50,7 @@ public class OperatorData implements Comparable<OperatorData> {
     }
     if (obj instanceof OperatorData){
       OperatorData op = (OperatorData)obj;
-      return lvl5_auto_collapse==op.lvl5_auto_collapse && lvl5_auto_logout==op.lvl5_auto_logout && username.equals(op.username) && display_name.equals(op.display_name) && password.equals(op.password);
+      return lvl5_auto_collapse==op.lvl5_auto_collapse && (Sync.excludeAutoLogoutTime || lvl5_auto_logout==op.lvl5_auto_logout) && username.equals(op.username) && display_name.equals(op.display_name) && password.equals(op.password);
     }else{
       return false;
     }
@@ -73,7 +75,7 @@ public class OperatorData implements Comparable<OperatorData> {
       }
       sb.append(" \"password\" = ").append(Utility.escapePostgreSQL(op.password));
     }
-    if (lvl5_auto_logout!=op.lvl5_auto_logout){
+    if (!Sync.excludeAutoLogoutTime && lvl5_auto_logout!=op.lvl5_auto_logout){
       if (first){
         first = false;
       }else{

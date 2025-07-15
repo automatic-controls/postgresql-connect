@@ -1,5 +1,7 @@
 package aces.webctrl.postgresql.core;
 import java.util.*;
+import java.time.*;
+import java.time.format.DateTimeParseException;
 import java.io.PrintStream;
 import com.controlj.green.core.data.*;
 import com.controlj.green.common.policy.*;
@@ -41,6 +43,21 @@ public class OperatorLink implements AutoCloseable {
     return getNode("/trees/config/operators/operatorlist").getChildren();
   }
   /**
+   * Note that {@code last_login_instant} was added in WebCTRL8.5, so this method will return {@code -1} for earlier versions.
+   * @return the epoch seconds of the last login of the given operator, or {@code -1} if the operator has never logged in.
+   */
+  public long getLastLogin(CoreNode operator){
+    try{
+      final String s = operator.getChild("last_login_instant").getValueString();
+      if (s.isBlank()){
+        return -1L;
+      }
+      return LocalDateTime.parse(s).atZone(ZoneId.systemDefault()).toEpochSecond();
+    }catch(CoreNotFoundException|DateTimeParseException e){
+      return -1L;
+    }
+  }
+  /**
    * Creates a new administrative operator with the given username, displayName, and password.
    * If an operator of the same username already exists, it is overwritten.
    */
@@ -59,7 +76,7 @@ public class OperatorLink implements AutoCloseable {
     }
     operator.setAttribute(CoreNode.KEY, username);
     if (rawPassword){
-      setRawPassword(operator, password, false);
+      setRawPassword(operator, password, false, true);
     }else{
       setPassword(operator, password, false);
     }
@@ -78,9 +95,11 @@ public class OperatorLink implements AutoCloseable {
   /**
    * Sets the raw digested password of the given operator.
    */
-  public void setRawPassword(CoreNode operator, String digest, boolean temporary) throws CoreNotFoundException, CoreDatabaseException {
-    operator.getChild("password_is_temporary").setBooleanAttribute(CoreNode.VALUE, temporary);
-    operator.getChild("operator_exempt").setBooleanAttribute(CoreNode.VALUE, true);
+  public void setRawPassword(CoreNode operator, String digest, boolean temporary, boolean create) throws CoreNotFoundException, CoreDatabaseException {
+    if (create || Config.bypassPasswordPolicy){
+      operator.getChild("password_is_temporary").setBooleanAttribute(CoreNode.VALUE, temporary);
+    }
+    operator.getChild("operator_exempt").setBooleanAttribute(CoreNode.VALUE, Config.bypassPasswordPolicy);
     final CoreNode passwordNode = operator.getChild("password");
     final String oldDigest = passwordNode.getValueString();
     if (!digest.equals(oldDigest)){

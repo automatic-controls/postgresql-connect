@@ -143,7 +143,7 @@ Now you are ready to test the add-on's connection to your PostgreSQL server.
 
 Fill out all the required fields, click *Save Changes* and then click *Sync Now*. Be sure to specify the correct database name in the connection URL. After waiting a minute, go to the log viewer page and verify that the sync was successful. I suggest using `0 0 * * * *` for the cron expression and `900000` milliseconds for the random maximum offset. This cron expression specifies to start a sync at the beginning of each hour. The random maximum offset specifies to start the sync randomly at some time during the first 15 minutes of the hour. This randomization is important when there are many add-on instances trying to connect to the PostgreSQL database. It ensures the database is not flooded with too many requests all at once.
 
-When the add-on connects to the PostgreSQL database for the first time, it generates a unique server ID for itself. The *Reset ID* button can be used to delete the saved ID and generate a new one.
+When the add-on connects to the PostgreSQL database for the first time, it generates a unique server ID for itself. The *Reset ID* button can be used to delete the saved ID and generate a new one. By default, WebCTRL's password policy is disabled for operators managed by this add-on. The setting that forces users to change their passwords at next login is also disabled by default. To permit both behaviors, you may uncheck the *Bypass Password Policy* box.
 
 If firewall restrictions limit PostgreSQL traffic, you can try using an SSH proxy server as an intermediary. In the below example, you would connect to `127.0.0.1:5433/database` after the proxy is set. The proxy is activated only when the add-on tries to sync, and then is deactivated afterwards. For security and simplicity, proxy settings cannot be viewed from a web browser after they are set.
 
@@ -196,7 +196,7 @@ In addition to the SFTP connection settings shown in the previous section, there
 | `debug` | `false` | When enabled, log messages will be more verbose. |
 | `log_expiration` | `60` | Specifies how many days to retain log messages in the database. |
 | `auto_update` | `true` | Specifies whether to attempt automatic updates for this add-on. |
-| `version` | `0.5.13` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
+| `version` | `0.5.14` | When `auto_update` is enabled, any connected client whose add-on version is less than this value will be updated. |
 | `download_path` | `/webctrl/addons/PostgreSQL_Connect.addon` | When `auto_update` is enabled, this is the SFTP server path where the latest version add-on file will be retrieved. |
 | `license_directory` | `/webctrl/licenses` | Specifies an SFTP server directory path for where to store WebCTRL license files. |
 | `ftp_host` | `postgresql.domain.com` | SFTP server hostname or IP address. |
@@ -206,6 +206,7 @@ In addition to the SFTP connection settings shown in the previous section, there
 | `ftp_key` | `-----BEGIN OPENSSH PRIVATE KEY----- ...` | Private key which authenticates the client to the SFTP server. |
 | `ftp_port_secondary` | `443` | Secondary SFTP port which may be utilized by some servers. This may be useful to bypass certain firewalls. |
 | `ftp_port_secondary_ids` | `46;51;60;61;62` | Semi-colon delimited list of server IDs which should use the secondary SFTP port. |
+| `auto_logout_exclude_ids` | `46;51;60;61;62` | Semi-colon delimited list of server IDs which should not synchronize operator session timeout thresholds. |
 
 When trying to push out an update for the add-on, you should do things in the following order:
 
@@ -229,7 +230,7 @@ This page lists all connected servers. If a server is decomissioned or permanent
 | ID | `1` | Internal ID which uniquely identifies the server within the PostgreSQL database. (Read-only) |
 | Name | `ACES Main Building` | User-friendly display name for the server. This defaults to the display name of the root of the Geo tree. |
 | WebCTRL Version | `8.5.002.20230323-123687` | Full version of the WebCTRL server. (Read-only) |
-| Add-On Version | `0.5.13` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
+| Add-On Version | `0.5.14` | Installed version of the PostgreSQL_Connect add-on. (Read-only) |
 | IP Address | `123.45.67.89` | External IP address of the server as viewed by the PostgreSQL database. (Read-only) |
 | Last Sync | `2024-12-02 14:05:32` | Timestamp of the last successful synchronization. If synced within the last 24 hours, the background color is green; otherwise, the background is red. (Read-only) |
 | License | `WebCTRL Premium` | Click this field to download WebCTRL's license. (Read-only) |
@@ -284,7 +285,7 @@ The table structure of this page is identical to that of the operator whitelist 
 
 ### Reverse Operator Sync
 
-When whitelisted operators changes their passwords (or other attributes) locally on the WebCTRL server, the changes are pushed back to the database during the next sync interval. It can take up to two full sync cycles for the password change to propogate to other connected server. This process can be sped up by clicking the *Sync Operator Data* item in WebCTRL's main menu in the upper-right corner (then propogation will only take one sync cycle).
+When whitelisted operators changes their passwords (or other attributes) locally on the WebCTRL server, the changes are pushed back to the database during the next sync interval. It can take up to two full sync cycles for the password change to propogate to other connected server. With this logic as stated, it would be possible for a local admin at one site to reset the passwords of everyone across all sites (either accidentally or maliciously). To mitigiate this possibility, the whitelisted operators being updated must have logged into the server within the past 8 hours in order for changes to propagate. Note that this reverse sync only functions on WebCTRL versions 8.5 and later.
 
 ### Operator Blacklist
 
@@ -346,12 +347,12 @@ Commands chained together using new-lines in a single entry are fail-fast, which
 | `exists <path>` | Asserts that the specified file or directory exists. If non-existent, then command execution is terminated. |
 | `!exists <path>` | Asserts that the specified file or directory does not exists. If it exists, then command execution is terminated. |
 | `regex <file_path> <find> [replace]` | If a replacement string is not given, then this commands logs all matches of the regular expression in the specified file. If a replacement string is given, then this command edits the specified file by replacing all matches of the regular expression. The file's contents are assumed to be UTF-8 encoded text. The [MULTILINE](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html#MULTILINE) and [DOTALL](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pattern.html#DOTALL) flags are used by default. |
-| `download <sftp_file_path> <local_file_path>` | Downloads a file from the SFTP server into the local file system of the WebCTRL server. |
+| `download <sftp_file_path> <local_file_path>` | Downloads a file from the SFTP server into the local file system of the WebCTRL server, overwriting if the file already exists. |
 | `upload <local_file_path> <sftp_file_path>` | Uploads a file from the local file system of the WebCTRL server into the SFTP server. |
 | `canApplyUpdate <file_path>` | Asserts that WebCTRL is able to apply the specified *.update* patch file. If the update cannot be applied, then command execution is terminated. |
 | `!canApplyUpdate <file_path>` | Asserts that WebCTRL is not able to apply the specified *.update* patch file. If the update can be applied, then command execution is terminated. |
 | `updateDST` | Updates daylight savings dates stored in the WebCTRL database and marks controllers for a pending parameter download. |
-| `opentunnel <listen_port> <target_port> [timeout]` | Open a reverse SSH tunnel from the WebCTRL server to the SFTP server. `listen_port` is opened on the SFTP server, and connections to this port are forwarded to `target_port` on the WebCTRL server. After `timeout` expires, the tunnel will be closed at the next sync. If `timeout` is undefined, then the tunnel stays open until the next server reboot. |
+| `opentunnel <listen_port> <target_port> [timeout]` | Open a reverse SSH tunnel from the WebCTRL server to the SFTP server. `listen_port` is opened on the SFTP server, and connections to this port are forwarded to `target_port` on the WebCTRL server. After `timeout` expires (milliseconds), the tunnel will be closed at the next sync. If `timeout` is undefined, then the tunnel stays open until the next server reboot. |
 | `closetunnel [listen_port]` | Close a reverse SSH tunnel that was previously opened with the `opentunnel` command. If `listen_port` is unspecified, all tunnels are closed (excluding those configured in the [SSH Tunnels](#ssh-tunnels) section). |
 | `listtunnels` | Logs a list of all open SSH tunnels. |
 
@@ -463,9 +464,9 @@ CREATE INDEX webctrl_trend_data_time ON webctrl.trend_data ("time" DESC);
 
 ### Packaged Dependencies
 
-- [PostgreSQL JDBC 42.7.5](https://jdbc.postgresql.org/) - Used to connect to PostgreSQL databases.
-- [JSch 0.2.24](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
-- [JSON-java 20250107](https://github.com/stleary/JSON-java) - Used to encode and decode JSON data.
+- [PostgreSQL JDBC 42.7.7](https://jdbc.postgresql.org/) - Used to connect to PostgreSQL databases.
+- [JSch 2.27.2](https://github.com/mwiede/jsch) - Used to connect to SFTP servers.
+- [JSON-java 20250517](https://github.com/stleary/JSON-java) - Used to encode and decode JSON data.
 
 ### Server ID Reset
 

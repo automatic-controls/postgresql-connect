@@ -125,6 +125,7 @@
       resize(result);
       const cmd = document.getElementById("cmdField");
       resize(cmd);
+      cmd.focus();
       cmd.addEventListener("keydown",function(e){
         if (!e.shiftKey){
           if (e.key==="Enter"){

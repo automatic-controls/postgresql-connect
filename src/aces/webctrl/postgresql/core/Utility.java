@@ -673,10 +673,10 @@ public class Utility {
     return null;
   }
   private final static Pattern versionFilter1 = Pattern.compile("[^0-9\\.]");
-  private final static Pattern versionFilter2 = Pattern.compile("(?<=^|\\.)0+(?=[^0])");
+  private final static Pattern versionFilter2 = Pattern.compile("(?<=^|\\.)0+(?=\\d)");
   private final static Pattern versionFilter3 = Pattern.compile("(?<=\\.)\\.++");
   private final static Pattern versionFilter4 = Pattern.compile("^\\.|\\.$");
-  private final static Pattern versionFilter5 = Pattern.compile("(?:\\.0|^0)++$");
+  private final static Pattern versionFilter5 = Pattern.compile("(?:\\.0)++$");
   private final static Pattern versionSplitter = Pattern.compile("\\.");
   /**
    * Compares two version strings to determine which is newer.

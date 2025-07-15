@@ -8,6 +8,7 @@ public class Config {
   public volatile static String username = null;
   public volatile static String password = null;
   public volatile static String keystorePassword = null;
+  public volatile static boolean bypassPasswordPolicy = true;
   public volatile static int ID;
   public final static CronExpression cron = new CronExpression();
   public volatile static long maxRandomOffset;
@@ -18,6 +19,7 @@ public class Config {
     username = "";
     password = "";
     keystorePassword = "";
+    bypassPasswordPolicy = true;
     maxRandomOffset = 900000L;
     cron.set("0 0 * * * *");
   }

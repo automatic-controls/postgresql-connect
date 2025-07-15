@@ -6,6 +6,7 @@ import com.controlj.green.addonsupport.access.trend.*;
 import com.controlj.green.addonsupport.access.aspect.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.sql.*;
 import java.time.*;
 /**
@@ -29,6 +30,8 @@ public class Sync {
   public volatile static boolean delayUpdate = false;
   public volatile static boolean licenseSynced = false;
   private volatile static boolean cleanedLogs = false;
+  private volatile static long lastSyncTime = -1L;
+  public volatile static boolean excludeAutoLogoutTime = false;
   /** Stores a partial list of mappings from the operator reference name in the WebCTRL database to the operator username in the PostgreSQL database. */
   private final static HashMap<String,String> refusernameCache = new HashMap<String,String>();
   /**
@@ -170,17 +173,20 @@ public class Sync {
                     " \"username\" = ?"+
                     ", \"display_name\" = ?"+
                     ", \"password\" = ?"+
-                    ", \"lvl5_auto_logout\" = ?"+
+                    (excludeAutoLogoutTime?"":", \"lvl5_auto_logout\" = ?")+
                     ", \"lvl5_auto_collapse\" = ?"+
                     " WHERE \"username\" = ?;"
                   );
                 ){
-                  s.setString(1,data.username);
-                  s.setString(2,data.display_name);
-                  s.setString(3,data.password);
-                  s.setInt(4,data.lvl5_auto_logout);
-                  s.setBoolean(5,data.lvl5_auto_collapse);
-                  s.setString(6,oldUsername);
+                  int i=0;
+                  s.setString(++i,data.username);
+                  s.setString(++i,data.display_name);
+                  s.setString(++i,data.password);
+                  if (!excludeAutoLogoutTime){
+                    s.setInt(++i,data.lvl5_auto_logout);
+                  }
+                  s.setBoolean(++i,data.lvl5_auto_collapse);
+                  s.setString(++i,oldUsername);
                   if (s.executeUpdate()!=1){
                     // If this operator changed their username on a different server, we won't be able to update from this server until the next general sync.
                     return;
@@ -223,7 +229,7 @@ public class Sync {
             Initializer.log("Attempting sync.");
             // Gather local changes to operator_whitelist since last sync
             final ArrayList<String> opUpdates = new ArrayList<String>(8);
-            if (!operatorWhitelist.isEmpty()){
+            if (lastSyncTime!=-1L && !operatorWhitelist.isEmpty()){
               OperatorData x,y;
               try(
                 OperatorLink link = new OperatorLink(true);
@@ -231,7 +237,7 @@ public class Sync {
                 String opname;
                 for (CoreNode op:link.getOperators()){
                   opname = op.getAttribute(CoreNode.KEY).toLowerCase();
-                  if ((x = operatorWhitelist.get(opname))!=null){
+                  if ((x = operatorWhitelist.get(opname))!=null && (link.getLastLogin(op)+28800L)*1000L>lastSyncTime){
                     y = new OperatorData(op,opname);
                     if (!x.equals(y)){
                       opUpdates.add(x.query(y));
@@ -329,6 +335,11 @@ public class Sync {
                     s.executeUpdate();
                   }
                   con.commit();
+                }
+                // Load Miscellaneous Settings
+                {
+                  String s = settings.get("auto_logout_exclude_ids");
+                  excludeAutoLogoutTime = s!=null && Pattern.compile("(?:^|;)"+ID+"(?:$|;)", Pattern.MULTILINE).matcher(s).find();
                 }
                 if (Initializer.stop){ return; }
                 // Check for changes in SSH tunnels
@@ -443,6 +454,7 @@ public class Sync {
                   }finally{
                     HelperAPI.logout(deletedOps);
                   }
+                  lastSyncTime = System.currentTimeMillis();
                 }
                 if (Initializer.stop){ return; }
                 // Update webctrl.operators

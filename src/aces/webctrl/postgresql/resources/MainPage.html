@@ -160,6 +160,7 @@
           "&password="+encodeURIComponent(passwordField.value)+
           "&cron="+encodeURIComponent(cronField.value)+
           "&offset="+encodeURIComponent(offsetField.value)+
+          "&bypPwPolicy="+(bypPwPolicyField.checked?"true":"false")+
           "&keyPassword="+encodeURIComponent(keyPasswordField.value)
         );
       }
@@ -298,6 +299,11 @@
         <span id="cronBox"></span>
       </div>
       <br>
+      <div class="divGrouping" title="By default, this is enabled, and the WebCTRL's password policy will be bypassed for operators managed by this add-on.">
+        <label for="bypPwPolicyField">Bypass Password Policy:</label>
+        <input class="c" type="checkbox" id="bypPwPolicyField" style="width:1.3em;height:1.3em;vertical-align:middle" onchange="registerChange()" checked>
+      </div>
+      <br>
       <div class="divGrouping">
         <button id="keystoreButton" class="e" onclick="keystoreField.click()" title="This JKS keystore should have exactly one alias, &quot;user&quot;. This alias should contain the private key and certificate used to authenticate this client to the PostgreSQL server.">Upload Client Keystore</button>
         <button id="certificateButton" class="e" onclick="certificateField.click()" title="This PEM encoded X509v3 certificate should contain the root certificate for the trust chain to the PostgreSQL server's SSL certificate. This is used to authenticate the PostgreSQL server's identity.">Upload Root Certificate</button>
@@ -347,6 +353,7 @@
       cronField.value = "__CRON__";
       offsetField.value = "__RANDOM_OFFSET__";
       cronBox.innerText = "__CRON_DISPLAY__";
+      bypPwPolicyField.checked = "__BYP_PW_POLICY__"=="true";
       resize(connectionURLField);
       resize(usernameField);
       resize(passwordField);

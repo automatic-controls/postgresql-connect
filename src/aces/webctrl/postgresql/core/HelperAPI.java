@@ -179,20 +179,33 @@ public class HelperAPI {
       int i,j;
       String[] jvmAtt;
       String[] jvmVal;
+      String s;
+      final HashSet<String> ignore = new HashSet<String>();
+      ignore.add("java.class.path");
+      ignore.add("jarstoskip");
       for (Object[] jvmProp : jvm.getOrderedJavaProperties()) {
-        jvmAtt = CJStringTokenizer.split((String)jvmProp[0], 39);
+        s = (String)jvmProp[0];
+        if (ignore.contains(s.toLowerCase())){
+          continue;
+        }
+        jvmAtt = CJStringTokenizer.split(s, 39);
         jvmVal = CJStringTokenizer.split((String)jvmProp[1], 135);
         j = Math.max(jvmAtt.length, jvmVal.length);
+        if (j>4){
+          continue;
+        }
         for (i = 0; i < j; ++i) {
           if (i < jvmAtt.length) {
-            w.print(CJIO.formatToLength(jvmAtt[i], 40, true));
+            if (i < jvmVal.length && jvmVal[i].length()>0){
+              w.print(CJIO.formatToLength(jvmAtt[i], 40, true));
+            }else{
+              w.print(jvmAtt[i]);
+            }
           } else {
             w.print(CJIO.formatToLength("", 40, true));
           }
           if (i < jvmVal.length) {
-            w.print(CJIO.formatToLength(jvmVal[i], 135, true));
-          } else {
-            w.print(CJIO.formatToLength("", 135, true));
+            w.print(jvmVal[i]);
           }
           w.println();
         }
@@ -838,10 +851,10 @@ public class HelperAPI {
           if ("null".equalsIgnoreCase(notesText)) {
             notesText = "No notes available.";
           }
-          out.println("Update : " + nextUpdInfo.getFileName());
-          out.println("Created: " + nextUpdInfo.getCreatedDate());
-          out.println("Applied: " + nextUpdInfo.getDateApplied());
-          out.println("Notes  : " + notesText);
+          out.println(nextUpdInfo.getFileName());
+          //out.println("Created: " + nextUpdInfo.getCreatedDate());
+          //out.println("Applied: " + nextUpdInfo.getDateApplied());
+          //out.println("Notes  : " + notesText);
           out.println();
         }
       }

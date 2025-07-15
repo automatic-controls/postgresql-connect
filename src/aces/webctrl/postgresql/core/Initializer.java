@@ -32,6 +32,8 @@ public class Initializer implements ServletContextListener {
   public volatile static Path pgsslkey;
   /** Path to the SSL key file to use for SFTP */
   public volatile static Path sftpkey;
+  /** The existence of this file indicates that WebCTRL's password policy should not be bypassed */
+  public volatile static Path pwPolicyFlag;
   /** Path to a temporary file used when downloading addons */
   public volatile static Path tmpAddonFile;
   /** Path to the directory containing addons */
@@ -141,6 +143,7 @@ public class Initializer implements ServletContextListener {
     pgsslroot = root.resolve("pgsslroot.cer");
     pgsslkey = root.resolve("pgsslkey.pfx");
     sftpkey = root.resolve("id_rsa");
+    pwPolicyFlag = root.resolve("enf_pw_policy");
     if (EMBEDDED_CONNECTION){
       try{
         if (!Files.exists(pgsslroot)){
@@ -157,6 +160,11 @@ public class Initializer implements ServletContextListener {
       }
     }
     Config.load();
+    try{
+      Config.bypassPasswordPolicy = !Files.exists(pwPolicyFlag);
+    }catch(Throwable t){
+      log(t);
+    }
     TableCache.init();
     try{
       Class.forName("org.postgresql.Driver");
@@ -281,6 +289,7 @@ public class Initializer implements ServletContextListener {
    * Tells the processing thread to invoke a synchronization event ASAP.
    */
   public static void syncNow(){
+    status = "Sync Initiated";
     syncNow = true;
     synchronized (syncNotifier){
       syncNotifier.notifyAll();
